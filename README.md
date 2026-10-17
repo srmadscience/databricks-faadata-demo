@@ -168,9 +168,26 @@ and by length of range. `--log FILE` writes one line per query, and `--seed N` r
 earlier run's queries. Add `--time "what changed"` before the workload to append a summary
 to `testresults_query.csv`, as `reproduce.sh` does for loads.
 
-A first test on the one month loaded, 8 threads for 20 seconds, managed 5.2 queries a
-second, at a p50 of 1.5 s and a p99 of 2.8 s. `ontime` is clustered by `tail` and
-`FlightDate`, so a query reads only the files that can hold that aircraft's flights.
+Tested with all ten years loaded, from the M2 Mac at home to the Free Edition warehouse,
+with the same seed each time, so the queries were identical:
+
+| Range | Flights returned | 8 threads, back to back: p50 / p99 | 2 queries a second: p50 / p99 |
+| --- | ---: | ---: | ---: |
+| 1 to 7 days | 7 | 1.8 s / 2.7 s | 640 ms / 1.5 s |
+| 8 to 31 days | 31 | 1.7 s / 2.5 s | 668 ms / 1.1 s |
+| 1 to 12 months | 189 | 1.9 s / 3.2 s | 728 ms / 1.3 s |
+| 1 to 10 years | 2,730 | 2.3 s / 5.5 s | 931 ms / 2.7 s |
+| **Queries a second** | | **4.0** | **2.0** |
+
+- **The warehouse is the limit.** Free Edition's warehouse completes about 4 queries a
+  second, whatever the client sends: 16 threads managed 4.2, with twice the latency (p50
+  3.5 s), as the extra queries only wait.
+- **Latency hardly depends on the range.** Running a query has a fixed cost, about 0.6 s
+  from home, so a week of one aircraft's flights takes almost as long as ten years.
+- **Compared with ClickHouse**, which managed 41 queries a second on a 4-core i5-6500 at
+  home (see clickhouse-faadata-demo's README), and 92 on an 8-vCPU EC2 instance, a Free
+  Edition warehouse is for trying the demo, not for serving many users. A paid workspace
+  can use a larger warehouse, and more clusters of it.
 
 ## Data mirror
 
@@ -251,8 +268,8 @@ in the time range.
 
 ### Screenshots
 
-These show the ClickHouse version, with ten years loaded; the dashboards are the same, and
-will be retaken on Databricks once the full data set is loaded here.
+Taken from Grafana 13.2 with the community Databricks plugin, on the ten years loaded into a
+Free Edition workspace.
 
 **Flight Delays**, February to July 2026: headline figures, delays and cancellations by
 day, delay causes by month and the airline table (top, above); further down, the airport

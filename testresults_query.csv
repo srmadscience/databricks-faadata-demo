@@ -1,0 +1,4 @@
+run_start,git_commit,server,workload,rate,threads,seconds,queries,errors,qps,p50_ms,p90_ms,p99_ms,max_ms,comment
+2026-10-17T16:35:54+0100,eaf38da,Databricks SQL 2026.39,flight-history,max,8,60,241,0,4.0,1916.3,2629.0,4103.7,5548.2,"ten years loaded, 8 threads back to back, Free Edition"
+2026-10-17T16:37:16+0100,eaf38da,Databricks SQL 2026.39,flight-history,max,16,60,254,0,4.2,3488.7,5832.8,8346.2,8789.2,"ten years loaded, 16 threads back to back, Free Edition"
+2026-10-17T16:38:28+0100,eaf38da,Databricks SQL 2026.39,flight-history,2.0,16,60,120,0,2.0,701.1,1172.7,1550.1,2717.7,"ten years loaded, 2 queries/s, Free Edition"
