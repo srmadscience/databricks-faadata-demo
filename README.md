@@ -105,30 +105,44 @@ as it was, and the staged files are deleted either way.
 
 ### Load times
 
-So far, every step has been timed on one month of flights (June 2025, 611,575 flights), a
-year of weather (2025, 3.85 million reports) and the registry, from an Apple M2 Mac (16 GB
-RAM) at home to a Free Edition workspace's serverless warehouse on AWS:
+A full load of January 2016 to July 2026, timed in October 2026 from an Apple M2 Mac
+(16 GB RAM) at home to a Free Edition workspace (serverless SQL warehouse, on AWS). The
+files were already downloaded, so the fetch steps only checked them; downloading them from
+the [data mirror](#data-mirror) took about 10 minutes more at home when the ClickHouse
+version was timed.
 
 | Step | Time |
 |------|-----:|
 | `create-database.sh` | 22 s |
-| `load-flights.sh` (1 month) | 50 s |
-| `build-tail-day.sh` | 13 s |
-| `load-stations.sh` | 28 s |
-| `load-weather.sh` (1 year) | 2 min 15 s |
-| `build-flight-weather.sh` (1 month) | 28 s |
-| `load-registry.sh` | 57 s |
+| `fetch-flights.sh 2016-01 2026-07` (127 months, already downloaded) | 2 s |
+| `load-flights.sh` (68.4 million flights) | 22 min 56 s |
+| `build-tail-day.sh` | 27 s |
+| `fetch-stations.sh` / `load-stations.sh` | 31 s |
+| `fetch-weather.sh 2016 2026` (11 years, already downloaded) | 42 s |
+| `load-weather.sh` (42.2 million reports) | 12 min 21 s |
+| `build-flight-weather.sh` | 3 min 52 s |
+| `fetch-registry.sh` / `load-registry.sh` | 1 min 1 s |
+| **Total** | **42 min 15 s** |
 
-Most of a load's time is the upload from home: a month of flights is 44 MB gzipped, and a
-year of weather, 351 files, about 150 MB. A full load of January 2016 to July 2026 has not been
-timed yet.
+Most of that is the loader converting and uploading files from home: 18 minutes for the
+flights (5.6 GB gzipped) and 10 minutes for the weather. The warehouse's own work is quick:
+the single `INSERT` of all 68.4 million flights took 2 min 24 s, and `OPTIMIZE` about as
+long again; the weather's `MERGE` and `OPTIMIZE` together took about 2.5 minutes, and
+`build-flight-weather.sh`, which matches every flight to the weather at both ends, under 4.
+
+The tables hold the same rows as ClickHouse's: 68,382,309 flights, 42,207,627 weather
+reports, 68,379,354 flights with weather (all but Saipan's) and 16,666,847 aircraft-days,
+and 8,841 of the 9,621 tail numbers flown since 2016 are identified in the registry (99.9%
+of those flown in 2025). Delta stores them in 5.9 GiB: `ontime` 2.2 GiB, `flight_weather`
+1.9 GiB and `weather` 1.7 GiB. Each load's timings are in
+[`testresults_load.csv`](testresults_load.csv).
 
 To time a load from scratch, drop the schema (`DROP SCHEMA faa CASCADE`) and move the
 downloaded files out of `data/raw/`, then run:
 
     scripts/reproduce.sh --time "what changed since the last test" 2016-01 2026-07
 
-This appends each step's time to `testresults_load.csv`, with the date, git commit,
+This appends each step's time to [`testresults_load.csv`](testresults_load.csv), with the date, git commit,
 Databricks SQL version and the comment, so runs can be compared.
 
 ## Query performance

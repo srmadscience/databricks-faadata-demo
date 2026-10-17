@@ -1,0 +1,13 @@
+run_start,git_commit,server,from,to,step,seconds,comment
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,create-database,22,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,fetch-flights,2,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,load-flights,1376,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,build-tail-day,27,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,fetch-stations,0,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,load-stations,31,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,fetch-weather,42,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,load-weather,741,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,build-flight-weather,232,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,fetch-registry,0,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,load-registry,61,"full load from home (files already downloaded), Free Edition"
+2026-10-17T15:50:46+0100,c158f3f,Databricks SQL 2026.39,2016-01,2026-07,total,2535,"full load from home (files already downloaded), Free Edition"
