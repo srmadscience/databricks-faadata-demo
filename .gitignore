@@ -22,3 +22,29 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# ---- Project-specific ----
+# IDE
+.idea/
+*.iml
+target/
+
+# Raw / downloaded data: NEVER commit. See data/README.md
+data/**
+!data/README.md
+!data/manifest.sha256
+!data/raw/
+!data/raw/*/
+!data/raw/*/.gitkeep
+*.csv
+!testresults_*.csv
+*.csv.gz
+*.parquet
+*.tsv
+
+# Local credentials
+clickhouse.properties
+.env
+
+# Load timings, appended by scripts/reproduce.sh --time
+!/testresults_load.csv

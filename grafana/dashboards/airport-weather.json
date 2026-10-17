@@ -1,0 +1,1814 @@
+{
+  "uid": "faa-airport-weather",
+  "title": "Airport Weather",
+  "description": "Pick an airport on the map, or from the list, to see its observed weather (METARs) over time: flight category, cloud layers, visibility, present weather, wind, temperature and pressure.",
+  "tags": [
+    "faa",
+    "weather"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "2026-02-01T00:00:00.000Z",
+    "to": "2026-07-31T23:59:59.000Z"
+  },
+  "links": [
+    {
+      "title": "Flight Delays",
+      "type": "link",
+      "url": "/d/faa-flight-delays/flight-delays",
+      "keepTime": true,
+      "icon": "dashboard"
+    },
+    {
+      "title": "Weather Impact",
+      "type": "link",
+      "url": "/d/faa-weather-impact/weather-impact",
+      "keepTime": true,
+      "icon": "dashboard"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "airport",
+        "label": "Airport",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-faa"
+        },
+        "query": "SELECT airport FROM faa.airport_station WHERE station IN (SELECT DISTINCT station FROM faa.weather) ORDER BY 1",
+        "definition": "SELECT airport FROM faa.airport_station WHERE station IN (SELECT DISTINCT station FROM faa.weather) ORDER BY 1",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "options": [],
+        "current": {
+          "selected": true,
+          "text": "ORD",
+          "value": "ORD"
+        },
+        "description": "Airports (BTS codes) that have weather data. Or click one on the map."
+      },
+      {
+        "name": "station",
+        "label": "Weather station",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-faa"
+        },
+        "hide": 2,
+        "query": "SELECT station FROM faa.airport_station WHERE airport = '${airport}'",
+        "definition": "SELECT station FROM faa.airport_station WHERE airport = '${airport}'",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "options": [],
+        "current": {
+          "selected": true,
+          "text": "ORD",
+          "value": "ORD"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "geomap",
+      "title": "Airports",
+      "description": "Each airport with weather data, coloured by the flight category of its latest report in the time range: VFR green, MVFR blue, IFR red, LIFR magenta. The selected airport is the yellow star. Click an airport, then \"Show this airport\", to see its weather below.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Show this airport",
+              "url": "/d/faa-airport-weather/airport-weather?${__url_time_range}&var-airport=${__data.fields.airport}"
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flight category"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "VFR": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "MVFR": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "IFR": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "LIFR": {
+                        "color": "#E040FB",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9FA0A8"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "view": {
+          "id": "coords",
+          "lat": 39,
+          "lon": -98,
+          "zoom": 3.6
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true
+        },
+        "basemap": {
+          "type": "osm-standard",
+          "name": "OpenStreetMap"
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Airports",
+            "tooltip": true,
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "lat",
+              "longitude": "lon"
+            },
+            "config": {
+              "showLegend": false,
+              "style": {
+                "size": {
+                  "fixed": 7
+                },
+                "opacity": 0.9,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                },
+                "color": {
+                  "field": "Flight category"
+                }
+              }
+            }
+          },
+          {
+            "type": "markers",
+            "name": "Selected airport",
+            "tooltip": true,
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "lat",
+              "longitude": "lon"
+            },
+            "config": {
+              "showLegend": false,
+              "style": {
+                "size": {
+                  "fixed": 20
+                },
+                "opacity": 0.9,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/star.svg"
+                },
+                "color": {
+                  "fixed": "#FADE2A"
+                }
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "-- Each airport's latest report in the time range, as a flight category.\nSELECT a.airport AS airport, a.airport_name AS Name, a.lat AS lat, a.lon AS lon,\n       w.category AS `Flight category`, formatDateTime(w.last, '%Y-%m-%d %H:%iZ') AS `Last report`\nFROM (\n    SELECT station, last,\n           arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                       [r.5, r.6, r.7, r.8], [r.1, r.2, r.3, r.4]) AS layers,\n           if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n           multiIf(r.9 IS NULL AND ceiling IS NULL AND r.1 = '', NULL,\n                   ceiling < 500 OR r.9 < 1, 'LIFR',\n                   ceiling < 1000 OR r.9 < 3, 'IFR',\n                   ceiling <= 3000 OR r.9 <= 5, 'MVFR', 'VFR') AS category\n    FROM (\n        SELECT station, max(valid) AS last,\n               argMax((skyc1, skyc2, skyc3, skyc4, skyl1, skyl2, skyl3, skyl4, vsby), valid) AS r\n        FROM faa.weather WHERE $__timeFilter(valid)\n        GROUP BY station\n    )\n) AS w\nINNER JOIN faa.airport_station AS a ON a.station = w.station",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        },
+        {
+          "refId": "B",
+          "rawSql": "SELECT airport, airport_name AS Name, lat, lon FROM faa.airport_station WHERE airport = '${airport}' LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 1,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Flight category",
+      "description": "FAA flight category of the latest report in the time range. VFR: ceiling above 3,000 ft and visibility above 5 mi; MVFR: ceiling 1,000-3,000 ft or visibility 3-5 mi; IFR: ceiling 500-999 ft or visibility 1-3 mi; LIFR: ceiling below 500 ft or visibility below 1 mi.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9FA0A8"
+          },
+          "noValue": "–",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "VFR": {
+                  "color": "green",
+                  "index": 0
+                },
+                "MVFR": {
+                  "color": "blue",
+                  "index": 1
+                },
+                "IFR": {
+                  "color": "red",
+                  "index": 2
+                },
+                "LIFR": {
+                  "color": "#E040FB",
+                  "index": 3
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT category AS `Flight category`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 2,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Wind",
+      "description": "Latest wind: direction it blows from (degrees true), speed and gusts in knots.",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT if(sknt = 0, 'Calm', concat(ifNull(leftPad(toString(toUInt16(drct)), 3, '0'), 'VRB'), '° ',\n       toString(toUInt16(sknt)), ifNull(concat('G', toString(toUInt16(gust))), ''), ' kt')) AS `Wind`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 3,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Visibility",
+      "description": "Latest visibility, statute miles (10 = 10 or more).",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–",
+          "unit": "suffix: mi"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT vsby AS `Visibility`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 4,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Ceiling",
+      "description": "Lowest broken, overcast or vertical-visibility layer in the latest report, feet above ground.",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT ifNull(concat(toString(toUInt32(ceiling)), ' ft'), 'None') AS `Ceiling`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 5,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Temp / dew point",
+      "description": "Latest temperature and dew point. A spread of a few degrees or less favours fog and low cloud.",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT concat(toString(round(tmpf)), ' / ', toString(round(dwpf)), ' °F') AS `Temp / dew point`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 6,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Altimeter",
+      "description": "Latest altimeter setting, inches of mercury.",
+      "gridPos": {
+        "x": 20,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–",
+          "unit": "suffix: inHg",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT alti AS `Altimeter`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 7,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Sky",
+      "description": "Cloud layers in the latest report, lowest first (– if none): ◔ few (1-2 eighths), ◑ scattered (3-4), ◕ broken (5-7), ● overcast, ⊗ sky obscured (vertical visibility); heights in feet above ground.",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 28
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT nullIf(arrayStringConcat(arrayFilter(x -> x IS NOT NULL,\n       [multiIf(skyc1 IN ('', 'CLR'), NULL,\n               concat(transform(skyc1, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc1),\n                      ifNull(concat(' ', toString(toUInt32(skyl1)), ' ft'), ''))),\n        multiIf(skyc2 IN ('', 'CLR'), NULL,\n               concat(transform(skyc2, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc2),\n                      ifNull(concat(' ', toString(toUInt32(skyl2)), ' ft'), ''))),\n        multiIf(skyc3 IN ('', 'CLR'), NULL,\n               concat(transform(skyc3, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc3),\n                      ifNull(concat(' ', toString(toUInt32(skyl3)), ' ft'), ''))),\n        multiIf(skyc4 IN ('', 'CLR'), NULL,\n               concat(transform(skyc4, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc4),\n                      ifNull(concat(' ', toString(toUInt32(skyl4)), ' ft'), '')))]), '   '), '') AS `Sky`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 8,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Latest METAR",
+      "description": "The raw text of the latest report in the time range.",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "–"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 16
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT metar AS `Latest METAR`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 9,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Weather at ${airport} over time",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 10
+    },
+    {
+      "type": "state-timeline",
+      "title": "Flight category",
+      "description": "Flight category of each report: VFR green, MVFR blue, IFR red, LIFR magenta.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9FA0A8"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "VFR": {
+                  "color": "green",
+                  "index": 0
+                },
+                "MVFR": {
+                  "color": "blue",
+                  "index": 1
+                },
+                "IFR": {
+                  "color": "red",
+                  "index": 2
+                },
+                "LIFR": {
+                  "color": "#E040FB",
+                  "index": 3
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "auto",
+        "mergeValues": true,
+        "alignValue": "center",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT valid AS time, category AS `Flight category`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 11,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cloud layers",
+      "description": "Each reported cloud layer (skyc1-4 at heights skyl1-4) as a dot at its height in feet above ground, one per report; layer 1 is always the lowest. The scale stops at 35,000 ft: the few higher reports are almost all typing errors in the METAR. Colour shows the cover, cool to warm as it increases: ◔ few (1-2 eighths of the sky) blue, ◑ scattered (3-4) green, ◕ broken (5-7) yellow, ● overcast orange; ⊗ sky obscured purple, with vertical visibility as the height. Clear sky has no layer. The lowest broken, overcast or obscured layer is the ceiling; the bands behind show the flight category it alone would give: LIFR below 500 ft, IFR below 1,000, MVFR to 3,000.",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "spanNulls": false,
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "unit": "suffix: ft",
+          "min": 0,
+          "max": 35000,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#E040FB33",
+                "value": null
+              },
+              {
+                "color": "#F2495C33",
+                "value": 500
+              },
+              {
+                "color": "#5794F233",
+                "value": 1000
+              },
+              {
+                "color": "transparent",
+                "value": 3001
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "◔ FEW.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8AB8FF"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "◑ SCT.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 5
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "◕ BKN.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FADE2A"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "● OVC.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 7
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "⊗ VV.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 7
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*\\(layer [2-4]\\)"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time,\n       if(skyc1 = 'FEW', skyl1, NULL) AS `◔ FEW`,\n       if(skyc1 = 'SCT', skyl1, NULL) AS `◑ SCT`,\n       if(skyc1 = 'BKN', skyl1, NULL) AS `◕ BKN`,\n       if(skyc1 = 'OVC', skyl1, NULL) AS `● OVC`,\n       if(skyc1 = 'VV', skyl1, NULL) AS `⊗ VV`,\n       if(skyc2 = 'FEW', skyl2, NULL) AS `◔ FEW (layer 2)`,\n       if(skyc2 = 'SCT', skyl2, NULL) AS `◑ SCT (layer 2)`,\n       if(skyc2 = 'BKN', skyl2, NULL) AS `◕ BKN (layer 2)`,\n       if(skyc2 = 'OVC', skyl2, NULL) AS `● OVC (layer 2)`,\n       if(skyc2 = 'VV', skyl2, NULL) AS `⊗ VV (layer 2)`,\n       if(skyc3 = 'FEW', skyl3, NULL) AS `◔ FEW (layer 3)`,\n       if(skyc3 = 'SCT', skyl3, NULL) AS `◑ SCT (layer 3)`,\n       if(skyc3 = 'BKN', skyl3, NULL) AS `◕ BKN (layer 3)`,\n       if(skyc3 = 'OVC', skyl3, NULL) AS `● OVC (layer 3)`,\n       if(skyc3 = 'VV', skyl3, NULL) AS `⊗ VV (layer 3)`,\n       if(skyc4 = 'FEW', skyl4, NULL) AS `◔ FEW (layer 4)`,\n       if(skyc4 = 'SCT', skyl4, NULL) AS `◑ SCT (layer 4)`,\n       if(skyc4 = 'BKN', skyl4, NULL) AS `◕ BKN (layer 4)`,\n       if(skyc4 = 'OVC', skyl4, NULL) AS `● OVC (layer 4)`,\n       if(skyc4 = 'VV', skyl4, NULL) AS `⊗ VV (layer 4)`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 12,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Low cloud",
+      "description": "The same cloud layers below 5,000 ft, where the ceiling decides whether flights operate under visual or instrument rules; higher layers are off the top. Colour shows the cover, cool to warm as it increases: ◔ few (1-2 eighths of the sky) blue, ◑ scattered (3-4) green, ◕ broken (5-7) yellow, ● overcast orange; ⊗ sky obscured purple, with vertical visibility as the height. Clear sky has no layer. The lowest broken, overcast or obscured layer is the ceiling; the bands behind show the flight category it alone would give: LIFR below 500 ft, IFR below 1,000, MVFR to 3,000.",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "spanNulls": false,
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "unit": "suffix: ft",
+          "min": 0,
+          "max": 5000,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#E040FB33",
+                "value": null
+              },
+              {
+                "color": "#F2495C33",
+                "value": 500
+              },
+              {
+                "color": "#5794F233",
+                "value": 1000
+              },
+              {
+                "color": "transparent",
+                "value": 3001
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "◔ FEW.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8AB8FF"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "◑ SCT.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 5
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "◕ BKN.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FADE2A"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "● OVC.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 7
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "⊗ VV.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 7
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*\\(layer [2-4]\\)"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time,\n       if(skyc1 = 'FEW', skyl1, NULL) AS `◔ FEW`,\n       if(skyc1 = 'SCT', skyl1, NULL) AS `◑ SCT`,\n       if(skyc1 = 'BKN', skyl1, NULL) AS `◕ BKN`,\n       if(skyc1 = 'OVC', skyl1, NULL) AS `● OVC`,\n       if(skyc1 = 'VV', skyl1, NULL) AS `⊗ VV`,\n       if(skyc2 = 'FEW', skyl2, NULL) AS `◔ FEW (layer 2)`,\n       if(skyc2 = 'SCT', skyl2, NULL) AS `◑ SCT (layer 2)`,\n       if(skyc2 = 'BKN', skyl2, NULL) AS `◕ BKN (layer 2)`,\n       if(skyc2 = 'OVC', skyl2, NULL) AS `● OVC (layer 2)`,\n       if(skyc2 = 'VV', skyl2, NULL) AS `⊗ VV (layer 2)`,\n       if(skyc3 = 'FEW', skyl3, NULL) AS `◔ FEW (layer 3)`,\n       if(skyc3 = 'SCT', skyl3, NULL) AS `◑ SCT (layer 3)`,\n       if(skyc3 = 'BKN', skyl3, NULL) AS `◕ BKN (layer 3)`,\n       if(skyc3 = 'OVC', skyl3, NULL) AS `● OVC (layer 3)`,\n       if(skyc3 = 'VV', skyl3, NULL) AS `⊗ VV (layer 3)`,\n       if(skyc4 = 'FEW', skyl4, NULL) AS `◔ FEW (layer 4)`,\n       if(skyc4 = 'SCT', skyl4, NULL) AS `◑ SCT (layer 4)`,\n       if(skyc4 = 'BKN', skyl4, NULL) AS `◕ BKN (layer 4)`,\n       if(skyc4 = 'OVC', skyl4, NULL) AS `● OVC (layer 4)`,\n       if(skyc4 = 'VV', skyl4, NULL) AS `⊗ VV (layer 4)`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 13,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Visibility",
+      "description": "Visibility in statute miles (10 = 10 or more). Bands: below 1 mi LIFR, 1-3 IFR, 3-5 MVFR.",
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "unit": "suffix: mi",
+          "min": 0,
+          "max": 10,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#E040FB33",
+                "value": null
+              },
+              {
+                "color": "#F2495C33",
+                "value": 1
+              },
+              {
+                "color": "#5794F233",
+                "value": 3
+              },
+              {
+                "color": "transparent",
+                "value": 5.01
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time, vsby AS Visibility\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 14,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Temperature and dew point",
+      "description": "Temperature and dew point, °F. Where the lines meet, the air is saturated: expect fog, mist or low cloud. The dotted line is freezing.",
+      "gridPos": {
+        "x": 12,
+        "y": 39,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "unit": "fahrenheit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "#8AB8FF",
+                "value": 32
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Temperature"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dew point"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time, tmpf AS Temperature, dwpf AS `Dew point`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 15,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Present weather",
+      "description": "Most significant weather in each report: ⛈ thunderstorm, 🧊 freezing rain or drizzle, ❄ snow, sleet or hail, 🌧 rain or showers, 🌦 drizzle, 🌫 fog, ≡ mist, haze, smoke or dust. The second row is the METAR code: - light, + heavy, VC in the vicinity, SH showers, BL blowing.",
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5A5A6E"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "⛈ Thunderstorm": {
+                  "color": "#8F3BB8",
+                  "index": 0
+                },
+                "🧊 Freezing rain": {
+                  "color": "#FF7383",
+                  "index": 1
+                },
+                "❄ Snow / ice": {
+                  "color": "#C0D8FF",
+                  "index": 2
+                },
+                "🌧 Rain": {
+                  "color": "#56A64B",
+                  "index": 3
+                },
+                "🌦 Drizzle": {
+                  "color": "#96D98D",
+                  "index": 4
+                },
+                "🌫 Fog": {
+                  "color": "#9FA0A8",
+                  "index": 5
+                },
+                "≡ Mist / haze": {
+                  "color": "#CCCCDC",
+                  "index": 6
+                },
+                "? Other": {
+                  "color": "#FADE2A",
+                  "index": 7
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "auto",
+        "mergeValues": true,
+        "alignValue": "center",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time, multiIf(match(wxcodes, 'TS'), '⛈ Thunderstorm',\n               match(wxcodes, 'FZ(RA|DZ)'), '🧊 Freezing rain',\n               match(wxcodes, 'SN|SG|PL|GS|GR'), '❄ Snow / ice',\n               match(wxcodes, 'RA|SH'), '🌧 Rain',\n               match(wxcodes, 'DZ'), '🌦 Drizzle',\n               match(wxcodes, 'FG'), '🌫 Fog',\n               match(wxcodes, 'BR|HZ|FU|DU|SA'), '≡ Mist / haze',\n               wxcodes != '', '? Other', NULL) AS Weather, nullIf(wxcodes, '') AS Codes\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 16,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Wind direction",
+      "description": "Arrows point the way the wind blows; the letters say where it blows from (↓ N is a north wind).",
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5A5A6E"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "auto",
+        "mergeValues": true,
+        "alignValue": "center",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time, multiIf(sknt IS NULL, NULL, sknt = 0, '○ Calm', drct IS NULL, '↻ Variable',\n               ['↓ N', '↙ NE', '← E', '↖ SE', '↑ S', '↗ SW', '→ W', '↘ NW'][intDiv(toUInt16(drct + 22.5) % 360, 45) + 1]) AS `Wind from`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 17,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Wind speed and gusts",
+      "description": "Sustained wind and gusts, knots.",
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "suffix: kt",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wind"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gusts"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time, sknt AS Wind, gust AS Gusts\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 18,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Precipitation and pressure",
+      "description": "Precipitation since the last hourly report, inches (bars; a trace shows as 0.0001), and altimeter setting, inHg (line, right axis). A falling altimeter usually means a low and worse weather approaching.",
+      "gridPos": {
+        "x": 12,
+        "y": 53,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Precipitation"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: in"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 80
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "custom.axisSoftMax",
+                "value": 0.1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#56A64B"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Altimeter"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: inHg"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT valid AS time, p01i AS `Precipitation`, alti AS Altimeter\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 19,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    },
+    {
+      "type": "table",
+      "title": "Reports (METARs)",
+      "description": "Every report in the time range, newest first, as transmitted. Routine reports are issued hourly; specials (SPECI) when conditions change.",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time (UTC)"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flight category"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "VFR": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "MVFR": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "IFR": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "LIFR": {
+                        "color": "#E040FB",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "transparent"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT formatDateTime(valid, '%Y-%m-%d %H:%iZ') AS `Time (UTC)`, category AS `Flight category`, metar AS METAR\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 2000",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table"
+        }
+      ],
+      "id": 20,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      }
+    }
+  ],
+  "schemaVersion": 41,
+  "version": 1
+}

@@ -1,0 +1,22 @@
+# Copy to clickhouse.properties (git-ignored) and fill in.
+# Environment variables CLICKHOUSE_URL / _USER / _PASSWORD / _DATABASE override these.
+
+# ClickHouse HTTP interface, as reached from the machine running the scripts.
+clickhouse.url=http://localhost:8123
+clickhouse.user=default
+clickhouse.password=
+clickhouse.database=faa
+
+# Grafana, for scripts/grafana-provision.sh only (environment variables
+# GRAFANA_SSH / GRAFANA_URL / GRAFANA_CLICKHOUSE_HOST / _PORT override these).
+# SSH login on the Grafana server: key-based, with passwordless sudo; or
+# "local" for a Grafana on this machine (run as a user with sudo).
+#grafana.ssh=user@grafana-host
+# Grafana's web address, for the dashboard links printed at the end.
+# Default: http://<host from grafana.ssh>:3000
+#grafana.url=http://grafana-host:3000
+# ClickHouse's native-protocol host and port as Grafana reaches them. Default:
+# the host in clickhouse.url and port 9000. Set the host if clickhouse.url says
+# localhost but Grafana runs on another machine.
+#grafana.clickhouse.host=clickhouse-host
+#grafana.clickhouse.port=9000

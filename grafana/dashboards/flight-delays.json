@@ -1,0 +1,1208 @@
+{
+  "uid": "faa-flight-delays",
+  "title": "Flight Delays",
+  "description": "US domestic flight delays from BTS on-time performance data (faa.ontime).",
+  "tags": [
+    "faa",
+    "flights"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "2026-02-01T00:00:00.000Z",
+    "to": "2026-07-31T23:59:59.000Z"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "airline",
+        "label": "Airline",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-faa"
+        },
+        "query": "SELECT DISTINCT Reporting_Airline FROM faa.ontime ORDER BY 1",
+        "definition": "SELECT DISTINCT Reporting_Airline FROM faa.ontime ORDER BY 1",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "options": []
+      },
+      {
+        "name": "origin",
+        "label": "Origin airport",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-faa"
+        },
+        "query": "SELECT DISTINCT Origin FROM faa.ontime ORDER BY 1",
+        "definition": "SELECT DISTINCT Origin FROM faa.ontime ORDER BY 1",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "options": []
+      },
+      {
+        "name": "min_flights",
+        "label": "Min flights flown",
+        "type": "custom",
+        "query": "50,100,250,500,1000",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "selected": true,
+          "text": "250",
+          "value": "250"
+        },
+        "options": [
+          {
+            "text": "50",
+            "value": "50",
+            "selected": false
+          },
+          {
+            "text": "100",
+            "value": "100",
+            "selected": false
+          },
+          {
+            "text": "250",
+            "value": "250",
+            "selected": true
+          },
+          {
+            "text": "500",
+            "value": "500",
+            "selected": false
+          },
+          {
+            "text": "1000",
+            "value": "1000",
+            "selected": false
+          }
+        ],
+        "description": "Only city pairs and flight numbers with at least this many completed flights in the time range are ranked in the top-10 charts, so that a few cancellations on a rarely flown route don't top the list."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Flights",
+      "description": "Scheduled flights in range.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT count() AS flights FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "On-time arrivals",
+      "description": "Arrived less than 15 minutes late, as a share of flights that completed (DOT definition).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 100 * countIf(ArrDel15 = 0) / countIf(Cancelled = 0 AND Diverted = 0) AS on_time\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Avg arrival delay",
+      "description": "Mean arrival delay of completed flights; early arrivals count as negative.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT avg(ArrDelay) AS delay FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Avg delay if late",
+      "description": "Mean arrival delay of flights that arrived 15+ minutes late.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT avgIf(ArrDelay, ArrDel15 = 1) AS delay FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Cancelled",
+      "description": "Share of scheduled flights cancelled.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 100 * avg(Cancelled) AS cancelled FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Diverted",
+      "description": "Share of scheduled flights diverted.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 100 * avg(Diverted) AS diverted FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Average delay by day",
+      "description": "Mean delay in minutes per day (local date of departure). Negative = early.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT toDateTime(FlightDate) AS time,\n       avg(DepDelay) AS `Departure delay`,\n       avg(ArrDelay) AS `Arrival delay`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY time ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "m"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Late and cancelled flights by day",
+      "description": "Share of each day's scheduled flights.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT toDateTime(FlightDate) AS time,\n       100 * countIf(DepDel15 = 1) / count() AS `Departed 15+ min late`,\n       100 * countIf(ArrDel15 = 1) / count() AS `Arrived 15+ min late`,\n       100 * avg(Cancelled) AS `Cancelled`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY time ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Delay minutes by cause, per month",
+      "description": "Total delay minutes attributed to each cause (reported for flights arriving 15+ min late). Note most weather delay is booked under NAS, not 'Extreme weather'.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT toDateTime(toStartOfMonth(FlightDate)) AS time,\n       sum(CarrierDelay) AS Carrier,\n       sum(LateAircraftDelay) AS `Late aircraft`,\n       sum(NASDelay) AS `Air traffic system (NAS)`,\n       sum(WeatherDelay) AS `Extreme weather`,\n       sum(SecurityDelay) AS Security\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY time ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 85,
+            "lineWidth": 0,
+            "barAlignment": 1,
+            "barWidthFactor": 0.9,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 9
+    },
+    {
+      "type": "table",
+      "title": "Airlines",
+      "description": "Reporting carriers by on-time arrival rate. Codes are BTS carrier codes (AA American, DL Delta, UA United, WN Southwest, B6 JetBlue, AS Alaska, NK Spirit, F9 Frontier, ...).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT Reporting_Airline AS Airline,\n       count() AS Flights,\n       round(100 * countIf(ArrDel15 = 0) / countIf(Cancelled = 0 AND Diverted = 0), 1) AS `On time %`,\n       round(avg(ArrDelay), 1) AS `Avg arr delay`,\n       round(100 * avg(Cancelled), 2) AS `Cancelled %`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY Airline ORDER BY `On time %` DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "On time %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-RdYlGr"
+                }
+              },
+              {
+                "id": "min",
+                "value": 60
+              },
+              {
+                "id": "max",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 10
+    },
+    {
+      "type": "barchart",
+      "title": "Departure delay by scheduled hour",
+      "description": "By scheduled local departure hour. Delays build up through the day as late aircraft knock on.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT lpad(toString(intDiv(CRSDepTime, 100) % 24), 2, '0') AS hour,\n       round(avg(DepDelay), 1) AS `Avg departure delay`,\n       round(100 * countIf(DepDel15 = 1) / count(), 1) AS `% departing 15+ min late`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY hour ORDER BY hour"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg departure delay"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% departing 15+ min late"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "hour",
+        "showValue": "never",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 11
+    },
+    {
+      "type": "barchart",
+      "title": "Departure delay by day of week",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT DayOfWeek AS dow,\n       ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][DayOfWeek] AS day,\n       round(avg(DepDelay), 1) AS `Avg departure delay`,\n       round(100 * countIf(DepDel15 = 1) / count(), 1) AS `% departing 15+ min late`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY dow, day ORDER BY dow"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg departure delay"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% departing 15+ min late"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dow"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "day",
+        "showValue": "never",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 12
+    },
+    {
+      "type": "geomap",
+      "title": "Average departure delay by airport",
+      "description": "Colour = mean departure delay (minutes). Airports with 100+ departures; hover for details.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT a.airport AS airport, any(a.airport_name) AS name, any(a.lat) AS lat, any(a.lon) AS lon,\n       toFloat64(count()) AS flights, round(avg(o.DepDelay), 1) AS avg_dep_delay\nFROM faa.ontime AS o\nINNER JOIN faa.airport_station AS a ON a.airport = o.Origin\nWHERE $__dateFilter(o.FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY airport HAVING flights >= 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "color": {
+            "mode": "continuous-GrYlRd"
+          },
+          "min": 0,
+          "max": 25
+        },
+        "overrides": []
+      },
+      "options": {
+        "view": {
+          "id": "coords",
+          "lat": 39,
+          "lon": -98,
+          "zoom": 3.6
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": false
+        },
+        "basemap": {
+          "type": "osm-standard",
+          "name": "OpenStreetMap"
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Airports",
+            "tooltip": true,
+            "location": {
+              "mode": "coords",
+              "latitude": "lat",
+              "longitude": "lon"
+            },
+            "config": {
+              "showLegend": true,
+              "style": {
+                "size": {
+                  "fixed": 6
+                },
+                "color": {
+                  "field": "avg_dep_delay"
+                },
+                "opacity": 0.8,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                }
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        }
+      },
+      "id": 13
+    },
+    {
+      "type": "table",
+      "title": "Most delayed airports",
+      "description": "Airports with 1,000+ departures in range, worst first.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT Origin AS Airport, any(OriginCityName) AS City, count() AS Departures,\n       round(100 * countIf(DepDel15 = 1) / countIf(Cancelled = 0), 1) AS `Late departures %`,\n       round(avg(DepDelay), 1) AS `Avg dep delay`,\n       round(100 * avg(Cancelled), 2) AS `Cancelled %`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY Airport HAVING Departures >= 1000\nORDER BY `Late departures %` DESC LIMIT 50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Late departures %"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 10
+              },
+              {
+                "id": "max",
+                "value": 35
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 14
+    },
+    {
+      "type": "barchart",
+      "title": "Top 10 least reliable city pairs",
+      "description": "Airport pairs, both directions together, with the most carrier cancellations (code A) per 1,000 flights, among pairs with at least the minimum number of completed flights; ties go to the pair with more carrier delay per flight. The Origin airport filter applies to where each flight left from.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "axisLabel": "Carrier cancellations per 1,000 flights"
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(delay|one_flight)$"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "City pair",
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.8,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT concat(least(Origin, Dest), '–', greatest(Origin, Dest)) AS `City pair`,\n       round(1000 * countIf(Cancelled = 1 AND CancellationCode = 'A') / count(), 1) AS `Carrier cxl / 1k flights`,\n       round(sum(CarrierDelay) / countIf(Cancelled = 0), 1) AS delay,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       -- city names from one flight of the pair, ordered like the airport codes\n       any((Origin, OriginCityName, DestCityName)) AS one_flight,\n       if(startsWith(`City pair`, one_flight.1), concat(one_flight.2, ' – ', one_flight.3), concat(one_flight.3, ' – ', one_flight.2)) AS Cities,\n       toString(count()) AS Flights, toString(delay) AS `Carrier delay min/flt`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY `City pair` HAVING countIf(Cancelled = 0) >= ${min_flights}\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC\nLIMIT 10"
+        }
+      ],
+      "id": 15
+    },
+    {
+      "type": "barchart",
+      "title": "Top 10 least reliable flight numbers",
+      "description": "Flight numbers with the most carrier cancellations (code A) per 1,000 flights, among those with at least the minimum number of completed flights; ties go to the one with more carrier delay per flight. Airlines reuse a number on several routes over time: the label shows the route it flew most, and the tooltip how many it flew.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "axisLabel": "Carrier cancellations per 1,000 flights"
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delay"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "Flight",
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.8,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "-- Rank first, then find the main route of just the ten flights ranked.\nWITH top AS (\n    SELECT Reporting_Airline AS airline, Flight_Number_Reporting_Airline AS number, count() AS flights,\n           round(1000 * countIf(Cancelled = 1 AND CancellationCode = 'A') / flights, 1) AS cxl,\n           round(sum(CarrierDelay) / countIf(Cancelled = 0), 1) AS carrier_delay\n    FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\n    GROUP BY airline, number HAVING countIf(Cancelled = 0) >= ${min_flights}\n    ORDER BY cxl DESC, carrier_delay DESC\n    LIMIT 10\n)\nSELECT concat(airline, ' ', toString(number), ' (', topK(1)(concat(Origin, '–', Dest))[1], ')') AS Flight,\n       any(cxl) AS `Carrier cxl / 1k flights`, any(carrier_delay) AS delay,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       toString(uniqExact(Origin, Dest)) AS Routes,\n       toString(any(flights)) AS Flights, toString(delay) AS `Carrier delay min/flt`\nFROM faa.ontime INNER JOIN top ON Reporting_Airline = airline AND Flight_Number_Reporting_Airline = number\nWHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY airline, number\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC"
+        }
+      ],
+      "id": 16
+    }
+  ],
+  "schemaVersion": 41,
+  "version": 1
+}

@@ -1,0 +1,1896 @@
+{
+  "uid": "faa-aircraft-reliability",
+  "title": "Aircraft Reliability",
+  "description": "Per-aircraft (tail number) reliability from BTS on-time data: carrier-caused cancellations and delays, utilisation and out-of-service gaps.",
+  "tags": [
+    "faa",
+    "flights",
+    "aircraft"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "2026-02-01T00:00:00.000Z",
+    "to": "2026-07-31T23:59:59.000Z"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "airline",
+        "label": "Airline",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-faa"
+        },
+        "query": "SELECT DISTINCT Reporting_Airline FROM faa.ontime ORDER BY 1",
+        "definition": "SELECT DISTINCT Reporting_Airline FROM faa.ontime ORDER BY 1",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "min_flights",
+        "label": "Min flights flown",
+        "type": "custom",
+        "query": "50,100,250,500,1000",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "selected": true,
+          "text": "250",
+          "value": "250"
+        },
+        "options": [
+          {
+            "text": "50",
+            "value": "50",
+            "selected": false
+          },
+          {
+            "text": "100",
+            "value": "100",
+            "selected": false
+          },
+          {
+            "text": "250",
+            "value": "250",
+            "selected": true
+          },
+          {
+            "text": "500",
+            "value": "500",
+            "selected": false
+          },
+          {
+            "text": "1000",
+            "value": "1000",
+            "selected": false
+          }
+        ],
+        "description": "Only aircraft that completed at least this many flights in the time range are ranked. Counting completed rather than scheduled flights keeps out placeholder tails, such as Frontier's N399FR, that airlines put on flights they cancel."
+      },
+      {
+        "name": "tail",
+        "label": "Aircraft",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-faa"
+        },
+        "query": "SELECT DISTINCT tail FROM faa.tail_day WHERE Reporting_Airline IN (${airline:singlequote}) AND match(tail, '^N[1-9][0-9A-Z]{0,4}$') ORDER BY 1",
+        "definition": "tail numbers for the selected airlines",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "options": []
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Flight Delays",
+      "type": "link",
+      "url": "/d/faa-flight-delays/flight-delays",
+      "keepTime": true,
+      "icon": "dashboard"
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Fleet",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Aircraft",
+      "description": "Distinct tail numbers that flew in range.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT uniqExact(tail) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Flights / aircraft-day",
+      "description": "Average flights per aircraft on the days it flew (utilisation).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(flights) / count() FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Carrier cxl",
+      "description": "Cancellations the airline was responsible for (BTS code A: maintenance, crew, aircraft cleaning, baggage, fuelling...). Weather, air-traffic and security cancellations are excluded.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(cxl_carrier) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Carrier cxl / 1k flights",
+      "description": "Carrier-caused cancellations per 1,000 scheduled flights.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 1000 * sum(cxl_carrier) / sum(flights) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Carrier delay / flight",
+      "description": "Minutes of delay attributed to the carrier (incl. maintenance), averaged over all completed flights.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(carrier_delay) / sum(completed) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Cxl with no tail",
+      "description": "Cancelled flights with no aircraft assigned. They are left out of every per-aircraft figure.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(cxl_carrier + cxl_other)\nFROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail = ''"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 7
+    },
+    {
+      "type": "table",
+      "title": "Airlines",
+      "description": "Per operating airline (regional carriers such as OO SkyWest, MQ Envoy and YX Republic fly for the majors). Flts/day = flights per aircraft per day flown; Cxl/1k = carrier cancellations per 1,000 flights; Delay min/flt = carrier delay minutes per completed flight; Delayed 15+ % = flights with 15+ min carrier delay.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT Reporting_Airline AS Airline,\n       uniqExact(tail) AS Aircraft,\n       round(sum(flights) / count(), 1) AS `Flts/day`,\n       round(1000 * sum(cxl_carrier) / sum(flights), 2) AS `Cxl/1k`,\n       round(sum(carrier_delay) / sum(completed), 1) AS `Delay min/flt`,\n       round(100 * sum(delayed15) / sum(completed), 1) AS `Delayed 15+ %`\nFROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''\nGROUP BY Airline ORDER BY `Cxl/1k`"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cxl/1k"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 6
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Delay min/flt"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 12
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 8
+    },
+    {
+      "type": "barchart",
+      "title": "Aircraft by carrier-cancellation rate",
+      "description": "How many aircraft fall into each band of carrier cancellations per 1,000 flights (aircraft that flew at least the minimum number of flights).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT bucket, count() AS Aircraft FROM (\n    SELECT tail,\n           1000 * sum(cxl_carrier) / sum(flights) AS rate,\n           multiIf(rate = 0, '0', rate < 1, '<1', rate < 2, '1-2', rate < 3, '2-3', rate < 5, '3-5',\n                   rate < 10, '5-10', '10+') AS bucket,\n           indexOf(['0','<1','1-2','2-3','3-5','5-10','10+'], bucket) AS ord\n    FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''\n    GROUP BY tail HAVING sum(completed) >= ${min_flights}\n)\nGROUP BY bucket, ord ORDER BY ord"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "bucket",
+        "showValue": "auto",
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "id": 9
+    },
+    {
+      "type": "table",
+      "title": "Reliability by aircraft model",
+      "description": "Carrier cancellations and delay by FAA make/model (10+ aircraft and 5,000+ flights, so widebodies that fly few domestic legs are left out). Model names are the FAA's exact type designations, so variants (737-8H4, 737-890...) appear separately.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 14,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT if(a.make_model = '', '(not in registry)', a.make_model) AS Model,\n       count() AS Aircraft,\n       sum(t.flights) AS Flights,\n       round(avg(a.year_mfr), 0) AS `Avg built`,\n       round(1000 * sum(t.cxl) / Flights, 2) AS `Cxl/1k`,\n       round(sum(t.delay) / sum(t.done), 1) AS `Delay min/flt`\nFROM (\n    SELECT tail, sum(flights) AS flights, sum(cxl_carrier) AS cxl,\n           sum(carrier_delay) AS delay, sum(completed) AS done\n    FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''\n    GROUP BY tail\n) AS t\nLEFT JOIN faa.aircraft_info AS a ON a.tail = t.tail\nGROUP BY Model HAVING Aircraft >= 10 AND Flights >= 5000\nORDER BY `Cxl/1k` DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cxl/1k"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 12
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Delay min/flt"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 15
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg built"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 10
+    },
+    {
+      "type": "barchart",
+      "title": "Reliability by aircraft age",
+      "description": "Aircraft age in years at the time of each flight (from the FAA registry's year of manufacture).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 14,
+        "w": 10,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT multiIf(t.year - a.year_mfr < 5, '0-4', t.year - a.year_mfr < 10, '5-9',\n               t.year - a.year_mfr < 15, '10-14', t.year - a.year_mfr < 20, '15-19',\n               t.year - a.year_mfr < 25, '20-24', '25+') AS bucket,\n       round(1000 * sum(t.cxl) / sum(t.flights), 2) AS `Carrier cxl / 1k flights`,\n       round(sum(t.delay) / sum(t.done), 1) AS `Carrier delay min / flight`,\n       uniqExact(t.tail) AS aircraft\nFROM (\n    SELECT tail, toYear(FlightDate) AS year, sum(cxl_carrier) AS cxl, sum(flights) AS flights,\n           sum(carrier_delay) AS delay, sum(completed) AS done\n    FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''\n    GROUP BY tail, year\n) AS t\nINNER JOIN faa.aircraft_info AS a ON a.tail = t.tail\nWHERE a.year_mfr IS NOT NULL\nGROUP BY bucket ORDER BY min(t.year - a.year_mfr)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier delay min / flight"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aircraft"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "bucket",
+        "showValue": "never",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 11
+    },
+    {
+      "type": "timeseries",
+      "title": "Carrier cancellations by day",
+      "description": "Carrier-caused (code A) cancellations per day, including flights with no tail number. Weather and air-traffic cancellations are left out: they are not the fleet's fault and their storm spikes are 100x larger (see the Flight Delays dashboard).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT time, cxl AS `Carrier cancellations`,\n       avg(cxl) OVER (ORDER BY time ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS `7-day average`\nFROM (\n    SELECT toDateTime(FlightDate) AS time, sum(cxl_carrier) AS cxl\n    FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote})\n    GROUP BY time\n)\nORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cancellations"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C80"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "7-day average"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 12
+    },
+    {
+      "type": "barchart",
+      "title": "Top 10 least reliable aircraft",
+      "description": "The ten aircraft with the most carrier cancellations per 1,000 flights, among those that flew at least the minimum number of flights; ties go to the one with more carrier delay per flight. The table below has the details. Click a bar to inspect that aircraft.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "axisLabel": "Carrier cancellations per 1,000 flights"
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "min": 0,
+          "links": [
+            {
+              "title": "Show this aircraft",
+              "url": "/d/faa-aircraft-reliability/aircraft-reliability?${__url_time_range}&${airline:queryparam}&${min_flights:queryparam}&var-tail=${__data.fields.Tail}"
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delay"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tail"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "Aircraft",
+        "orientation": "horizontal",
+        "showValue": "always",
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "barWidth": 0.8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT concat(tail, ' (', any(Reporting_Airline), ')') AS Aircraft, tail AS Tail,\n       round(1000 * sum(cxl_carrier) / sum(flights), 1) AS `Carrier cxl / 1k flights`,\n       round(sum(carrier_delay) / sum(completed), 1) AS delay,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       toString(sum(flights)) AS Flights, toString(delay) AS `Carrier delay min/flt`\nFROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''\nGROUP BY tail HAVING sum(completed) >= ${min_flights}\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC\nLIMIT 10"
+        }
+      ],
+      "id": 24
+    },
+    {
+      "type": "table",
+      "title": "Least reliable aircraft",
+      "description": "Aircraft that flew at least the minimum number of flights, worst carrier-cancellation rate first. Cxl = carrier cancellations; Cxl/1k = per 1,000 flights; Delay min/flt = carrier delay minutes per completed flight; Longest gap = longest run of days without a flight (often heavy maintenance or storage). Click a tail to inspect it below.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT t.Tail, t.Airline, a.make_model AS Model, a.year_mfr AS Built, t.* EXCEPT (Tail, Airline)\nFROM (\n    SELECT tail AS Tail, any(Reporting_Airline) AS Airline,\n           sum(flights) AS Flights,\n           sum(cxl_carrier) AS `Cxl`,\n           round(1000 * Cxl / Flights, 1) AS `Cxl/1k`,\n           round(sum(carrier_delay) / sum(completed), 1) AS `Delay min/flt`,\n           sum(diverted) AS Diverted,\n           uniqExact(FlightDate) AS `Days flown`,\n           arrayMax(arrayDifference(arraySort(groupUniqArray(toRelativeDayNum(FlightDate))))) - 1\n               AS `Longest gap`,\n           toString(max(FlightDate)) AS `Last flown`\n    FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND tail != ''\n    GROUP BY tail HAVING sum(completed) >= ${min_flights}\n    ORDER BY `Cxl/1k` DESC, `Delay min/flt` DESC\n    LIMIT 100\n) AS t\nLEFT JOIN faa.aircraft_info AS a ON a.tail = t.Tail\nORDER BY `Cxl/1k` DESC, `Delay min/flt` DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cxl/1k"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 15
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Delay min/flt"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 25
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Longest gap"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: d"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-BlPu"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Built"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tail"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this aircraft",
+                    "url": "/d/faa-aircraft-reliability/aircraft-reliability?${__url_time_range}&${airline:queryparam}&${min_flights:queryparam}&var-tail=${__value.raw}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 13
+    },
+    {
+      "type": "row",
+      "title": "Aircraft ${tail}",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 14
+    },
+    {
+      "type": "table",
+      "title": "Registration",
+      "description": "From the FAA aircraft registry. Owner is often a lessor rather than the operating airline.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 24,
+        "h": 3
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT make_model AS Model, year_mfr AS Built, seats AS Seats,\n       if(registrant = '', '(not published)', registrant) AS Owner,\n       if(registered = 1, 'Registered', concat('Deregistered ', toString(cancel_date))) AS Status\nFROM faa.aircraft_info WHERE tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Built"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 15
+    },
+    {
+      "type": "stat",
+      "title": "Flights",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(flights) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 16
+    },
+    {
+      "type": "stat",
+      "title": "Carrier cxl",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(cxl_carrier) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 17
+    },
+    {
+      "type": "stat",
+      "title": "Carrier cxl / 1k",
+      "description": "Compare with the fleet figure at the top.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 1000 * sum(cxl_carrier) / sum(flights) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 18
+    },
+    {
+      "type": "stat",
+      "title": "Carrier delay / flight",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(carrier_delay) / sum(completed) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 19
+    },
+    {
+      "type": "stat",
+      "title": "Days flown",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT uniqExact(FlightDate) FROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 20
+    },
+    {
+      "type": "stat",
+      "title": "Longest gap",
+      "description": "Longest run of days without a flight.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 55,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT arrayMax(arrayDifference(arraySort(groupUniqArray(toRelativeDayNum(FlightDate))))) - 1\nFROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: days",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "id": 21
+    },
+    {
+      "type": "timeseries",
+      "title": "Daily activity",
+      "description": "Flights per day. Gaps are days the aircraft did not fly.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT toDateTime(FlightDate) AS time,\n       sum(completed) AS Flown,\n       sum(cxl_carrier) AS `Carrier cancellations`,\n       sum(cxl_other) AS `Other cancellations`\nFROM faa.tail_day WHERE $__dateFilter(FlightDate) AND tail = '${tail}'\nGROUP BY time ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cancellations"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Other cancellations"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 22
+    },
+    {
+      "type": "table",
+      "title": "Disrupted flights",
+      "description": "Cancellations, diversions and flights with 15+ minutes of carrier delay, newest first. Cancellation codes: A carrier, B weather, C air traffic system, D security.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT toString(FlightDate) AS Date, Reporting_Airline AS Airline, Flight_Number_Reporting_Airline AS Flight,\n       concat(Origin, ' → ', Dest) AS Route,\n       lpad(toString(CRSDepTime), 4, '0') AS `Sched dep`,\n       multiIf(Cancelled = 1, concat('Cancelled (', CancellationCode, ')'),\n               Diverted = 1, 'Diverted', 'Delayed') AS Outcome,\n       DepDelay AS `Dep delay`, CarrierDelay AS `Carrier delay`, LateAircraftDelay AS `Late aircraft delay`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND tail = '${tail}'\n  AND (Cancelled = 1 OR Diverted = 1 OR CarrierDelay >= 15)\nORDER BY FlightDate DESC, CRSDepTime DESC\nLIMIT 500\n-- ontime is sorted by date: reading it in order would skip the by_tail projection\nSETTINGS optimize_read_in_order = 0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier delay"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 23
+    },
+    {
+      "type": "table",
+      "title": "Flight history",
+      "description": "Every flight this aircraft was scheduled for in the time range, newest first, up to 5,000. Times are local to the airport (HHMM); delays are in minutes. Cancellation codes: A carrier, B weather, C air traffic system, D security.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-faa"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 78,
+        "w": 24,
+        "h": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-faa"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT toString(FlightDate) AS Date, Reporting_Airline AS Airline, Flight_Number_Reporting_Airline AS Flight,\n       concat(Origin, ' → ', Dest) AS Route,\n       lpad(toString(CRSDepTime), 4, '0') AS `Sched dep`, lpad(toString(DepTime), 4, '0') AS Dep,\n       DepDelay AS `Dep delay`,\n       lpad(toString(CRSArrTime), 4, '0') AS `Sched arr`, lpad(toString(ArrTime), 4, '0') AS Arr,\n       ArrDelay AS `Arr delay`,\n       multiIf(Cancelled = 1, concat('Cancelled (', CancellationCode, ')'),\n               Diverted = 1, 'Diverted', ArrDelay >= 15, 'Late', 'On time') AS Outcome,\n       Distance AS Miles\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND tail = '${tail}'\nORDER BY FlightDate DESC, CRSDepTime DESC\nLIMIT 5000\n-- ontime is sorted by date: reading it in order would skip the by_tail projection\nSETTINGS optimize_read_in_order = 0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dep delay"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Arr delay"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "id": 25
+    }
+  ],
+  "schemaVersion": 41,
+  "version": 1
+}

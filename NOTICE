@@ -1,0 +1,27 @@
+clickhouse-faadata-demo
+Copyright 2026 David Rolfe
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The repository contains no data. Its scripts download, and the project's
+GitHub Releases mirror redistributes, data from these sources:
+
+  Flight on-time performance
+    U.S. Department of Transportation, Bureau of Transportation Statistics,
+    Reporting Carrier On-Time Performance (1987-present).
+    https://www.transtats.bts.gov/
+    U.S. government work, in the public domain.
+
+  Weather observations and station metadata
+    Iowa Environmental Mesonet (IEM), Iowa State University, ASOS/AWOS data.
+    https://mesonet.agron.iastate.edu/
+    IEM asks that it be credited when its data are used.
+
+  Airport codes and locations
+    OurAirports. https://ourairports.com/data/
+    Released into the public domain.
+
+  Aircraft registration
+    Federal Aviation Administration, Releasable Aircraft Database.
+    https://registry.faa.gov/
+    U.S. government work, in the public domain.
