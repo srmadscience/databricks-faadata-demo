@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Creates the faa database (and any tables) by running sql/*.sql against
-# ClickHouse in file-name order. Every statement uses IF NOT EXISTS, so it is
-# safe to re-run. Needs only bash and curl (uses the ClickHouse HTTP interface).
+# Creates the faa schema, its staging volume and its tables and views by
+# running sql/*.sql on the SQL warehouse in file-name order. Every statement
+# uses IF NOT EXISTS or OR REPLACE, so it is safe to re-run. Needs bash and
+# python3 (uses the SQL Statement Execution API).
 #
 #   scripts/create-database.sh            run everything in sql/
 #   scripts/create-database.sh FILE...    run only the given files
@@ -31,11 +32,11 @@ run_sql() {
   if [[ -n "${DRY_RUN:-}" ]]; then
     printf '%s\n\n' "$1"
   else
-    ch_query "$1"
+    dbx_run "$1"
   fi
 }
 
-[[ -n "${DRY_RUN:-}" ]] || ch_check_connection
+[[ -n "${DRY_RUN:-}" ]] || dbx_check_connection
 
 files=("$@")
 [[ ${#files[@]} -gt 0 ]] || files=(sql/*.sql)
@@ -59,6 +60,6 @@ for file in "${files[@]}"; do
 done
 
 if [[ -z "${DRY_RUN:-}" ]]; then
-  echo "Tables in faa:"
-  ch_query "SELECT name, engine, total_rows FROM system.tables WHERE database = 'faa' ORDER BY name FORMAT PrettyCompact"
+  echo "Tables in $DBX_CATALOG.faa:"
+  dbx_query "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'faa' ORDER BY table_name"
 fi

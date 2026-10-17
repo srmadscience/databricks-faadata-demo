@@ -36,7 +36,8 @@ def normalise(info):
 
 with open(out + ".part", "wb") as raw:
     f = gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) if out.endswith(".gz") else raw
-    with tarfile.open(fileobj=f, mode="w", format=tarfile.GNU_FORMAT) as tar:
+    # dereference: data/raw may link to another copy of the files (see data/README.md)
+    with tarfile.open(fileobj=f, mode="w", format=tarfile.GNU_FORMAT, dereference=True) as tar:
         for m in members:
             tar.add(os.path.join(base, m), arcname=m, filter=normalise)
     if f is not raw:

@@ -18,22 +18,22 @@
 -- names and coordinates on Grafana maps.
 CREATE TABLE IF NOT EXISTS faa.airports
 (
-    id                UInt32,
-    ident             String,
-    type              LowCardinality(String),
-    name              String,
-    latitude_deg      Float64,
-    longitude_deg     Float64,
-    elevation_ft      Nullable(Int32),
-    continent         LowCardinality(String),
-    iso_country       LowCardinality(String),
-    iso_region        LowCardinality(String),
-    municipality      String,
-    scheduled_service LowCardinality(String),
-    icao_code         String,
-    iata_code         String,
-    gps_code          String,
-    local_code        String
+    id                INT NOT NULL,
+    ident             STRING NOT NULL,
+    type              STRING NOT NULL,
+    name              STRING NOT NULL,
+    latitude_deg      DOUBLE NOT NULL,
+    longitude_deg     DOUBLE NOT NULL,
+    elevation_ft      INT,
+    continent         STRING NOT NULL,
+    iso_country       STRING NOT NULL,
+    iso_region        STRING NOT NULL,
+    municipality      STRING NOT NULL,
+    scheduled_service STRING NOT NULL,
+    icao_code         STRING NOT NULL,
+    iata_code         STRING NOT NULL,
+    gps_code          STRING NOT NULL,
+    local_code        STRING NOT NULL
 )
-ENGINE = ReplacingMergeTree
-ORDER BY id;
+-- Replaced whole by load-stations.sh.
+CLUSTER BY (iata_code);

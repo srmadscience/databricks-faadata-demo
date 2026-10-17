@@ -14,17 +14,21 @@
 # limitations under the License.
 
 # Configures a Grafana server over SSH: a Linux package install (/etc/grafana,
-# /var/lib/grafana, systemd service grafana-server) with the
-# grafana-clickhouse-datasource plugin, reached with key login and passwordless sudo.
-# grafana.ssh=local configures a Grafana on this machine instead, without SSH.
-#   - installs the ClickHouse datasource and dashboard provider from grafana/provisioning/
-#   - copies grafana/dashboards/*.json to the dashboard folder Grafana watches
-#   - gives grafana-server the ClickHouse credentials via a root-only env file
+# /var/lib/grafana, systemd service grafana-server), reached with key login and
+# passwordless sudo. grafana.ssh=local configures a Grafana on this machine
+# instead, without SSH.
+#   - installs the community Databricks plugin (mullerpeter-databricks-datasource)
+#     if it is missing, and allows it to load, as it is unsigned
+#   - installs the Databricks datasource and dashboard provider from grafana/provisioning/
+#   - copies grafana/dashboards/*.json to the dashboard folder Grafana watches,
+#     with their catalog set to databricks.catalog
+#   - gives grafana-server the Databricks token via a root-only env file
 #   - restarts Grafana and reports provisioning errors from its log
-# Safe to re-run; re-run after adding or changing dashboards.
+# Grafana uses the same workspace, SQL warehouse, catalog and token as the
+# scripts. Safe to re-run; re-run after adding or changing dashboards.
 #
-# Settings: grafana.* in clickhouse.properties (see clickhouse.properties.example),
-# or the environment variables below.
+# Settings: databricks.* and grafana.* in databricks.properties (see
+# databricks.properties.example), or the environment variables below.
 #
 #   scripts/grafana-provision.sh
 #   GRAFANA_SSH=me@grafana-host scripts/grafana-provision.sh
@@ -33,19 +37,15 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
 GRAFANA_SSH="${GRAFANA_SSH:-$(prop grafana.ssh)}"
-[[ -n "$GRAFANA_SSH" ]] || { echo "error: set grafana.ssh=user@host in clickhouse.properties, or GRAFANA_SSH" >&2; exit 1; }
+[[ -n "$GRAFANA_SSH" ]] || { echo "error: set grafana.ssh=user@host in databricks.properties, or GRAFANA_SSH" >&2; exit 1; }
 GRAFANA_URL="${GRAFANA_URL:-$(prop grafana.url)}"
 GRAFANA_HOST=${GRAFANA_SSH#*@}; [[ "$GRAFANA_SSH" != local ]] || GRAFANA_HOST=localhost
 GRAFANA_URL="${GRAFANA_URL:-http://$GRAFANA_HOST:3000}"
 GRAFANA_PORT=$(sed -E 's#^[a-z]+://[^/:]+:?([0-9]*).*#\1#' <<< "$GRAFANA_URL"); GRAFANA_PORT="${GRAFANA_PORT:-3000}"
-# ClickHouse as Grafana reaches it (native protocol), by default the host in clickhouse.url.
-GF_CH_HOST="${GRAFANA_CLICKHOUSE_HOST:-$(prop grafana.clickhouse.host)}"
-GF_CH_HOST="${GF_CH_HOST:-$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<< "$CH_URL")}"
-GF_CH_PORT="${GRAFANA_CLICKHOUSE_PORT:-$(prop grafana.clickhouse.port)}"; GF_CH_PORT="${GF_CH_PORT:-9000}"
-if [[ "$GF_CH_HOST" =~ ^(localhost|127\.0\.0\.1|::1)$ && ! "$GRAFANA_HOST" =~ ^(localhost|127\.0\.0\.1|::1)$ ]]; then
-  echo "warn: Grafana will look for ClickHouse at $GF_CH_HOST, i.e. on the Grafana server itself;" >&2
-  echo "      set grafana.clickhouse.host if ClickHouse runs elsewhere" >&2
-fi
+[[ -n "$DBX_HOST" && -n "$DBX_TOKEN" && -n "$DBX_WAREHOUSE" ]] \
+  || { echo "error: set databricks.host, databricks.token and databricks.warehouse_id in databricks.properties" >&2; exit 1; }
+PLUGIN=mullerpeter-databricks-datasource
+PLUGIN_URL="https://github.com/mullerpeter/databricks-grafana/releases/download/v1.3.8/$PLUGIN.zip"
 
 PROV="$PROJECT_DIR/grafana/provisioning"
 
@@ -56,27 +56,59 @@ else
   remote() { ssh -o BatchMode=yes "$GRAFANA_SSH" "$@"; }
 fi
 
-echo "Installing provisioning files on $GRAFANA_SSH (ClickHouse at $GF_CH_HOST:$GF_CH_PORT)"
-sed -e "s/__CLICKHOUSE_HOST__/$GF_CH_HOST/" -e "s/__CLICKHOUSE_PORT__/$GF_CH_PORT/" "$PROV/datasources/clickhouse.yaml" \
-  | remote "sudo install -o root -g grafana -m 640 /dev/stdin /etc/grafana/provisioning/datasources/faa-clickhouse.yaml"
+if ! remote "test -d /var/lib/grafana/plugins/$PLUGIN"; then
+  echo "Installing the $PLUGIN plugin"
+  remote "sudo grafana cli --pluginUrl '$PLUGIN_URL' plugins install $PLUGIN > /dev/null && \
+          sudo chown -R grafana:grafana /var/lib/grafana/plugins/$PLUGIN"
+fi
+# The plugin is unsigned, so Grafana loads it only if grafana.ini names it:
+# add it to allow_loading_unsigned_plugins, keeping any plugins listed already.
+remote "sudo bash -s -- $PLUGIN" <<'EOF'
+ini=/etc/grafana/grafana.ini
+if ! grep -q "^allow_loading_unsigned_plugins.*$1" $ini; then
+  if grep -q '^allow_loading_unsigned_plugins *= *[^ ]' $ini; then
+    sed -i "s/^\(allow_loading_unsigned_plugins *=.*[^ ]\) *$/\1,$1/" $ini
+  elif grep -q '^;*allow_loading_unsigned_plugins' $ini; then
+    sed -i "s/^;*allow_loading_unsigned_plugins *=.*/allow_loading_unsigned_plugins = $1/" $ini
+  else
+    sed -i "s/^\[plugins\]$/[plugins]\nallow_loading_unsigned_plugins = $1/" $ini
+  fi
+fi
+grep -q "^allow_loading_unsigned_plugins.*$1" $ini \
+  || { echo "error: set allow_loading_unsigned_plugins = $1 under [plugins] in $ini" >&2; exit 1; }
+EOF
+
+echo "Installing provisioning files on $GRAFANA_SSH (Databricks $DBX_HOST, warehouse $DBX_WAREHOUSE, catalog $DBX_CATALOG)"
+sed -e "s#__DATABRICKS_HOST__#$DBX_HOST#" -e "s#__HTTP_PATH__#sql/1.0/warehouses/$DBX_WAREHOUSE#" "$PROV/datasources/databricks.yaml" \
+  | remote "sudo install -o root -g grafana -m 640 /dev/stdin /etc/grafana/provisioning/datasources/faa-databricks.yaml"
 remote "sudo install -o root -g grafana -m 640 /dev/stdin /etc/grafana/provisioning/dashboards/faa.yaml" \
   < "$PROV/dashboards/faa.yaml"
 
 remote "sudo install -d -o grafana -g grafana -m 755 /var/lib/grafana/dashboards/faa"
 for f in "$PROJECT_DIR"/grafana/dashboards/*.json; do
   [[ -f "$f" ]] || continue
-  remote "sudo install -o grafana -g grafana -m 644 /dev/stdin '/var/lib/grafana/dashboards/faa/$(basename "$f")'" < "$f"
+  # The dashboards' hidden "catalog" constant names the catalog in every query.
+  python3 -I -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+for v in d["templating"]["list"]:
+    if v["name"] == "catalog":
+        v["query"] = sys.argv[2]
+        v["current"] = {"text": sys.argv[2], "value": sys.argv[2]}
+        v["options"] = [{"text": sys.argv[2], "value": sys.argv[2], "selected": True}]
+json.dump(d, sys.stdout, indent=2, ensure_ascii=False)' "$f" "$DBX_CATALOG" \
+    | remote "sudo install -o grafana -g grafana -m 644 /dev/stdin '/var/lib/grafana/dashboards/faa/$(basename "$f")'"
   echo "  dashboard $(basename "$f")"
 done
 
-# Credentials travel over SSH stdin (never on a command line) into a file only
+# The token travels over SSH stdin (never on a command line) into a file only
 # root can read; systemd reads it as root and passes it to grafana-server, and
-# the datasource YAML references ${CLICKHOUSE_USER} / ${CLICKHOUSE_PASSWORD}.
-printf 'CLICKHOUSE_USER=%s\nCLICKHOUSE_PASSWORD=%s\n' "$CH_USER" "$CH_PASSWORD" \
-  | remote "sudo install -o root -g root -m 600 /dev/stdin /etc/grafana/faa-clickhouse.env"
+# the datasource YAML references ${DATABRICKS_TOKEN}.
+printf 'DATABRICKS_TOKEN=%s\n' "$DBX_TOKEN" \
+  | remote "sudo install -o root -g root -m 600 /dev/stdin /etc/grafana/faa-databricks.env"
 remote "sudo install -d /etc/systemd/system/grafana-server.service.d && \
-        printf '[Service]\nEnvironmentFile=/etc/grafana/faa-clickhouse.env\n' \
-        | sudo tee /etc/systemd/system/grafana-server.service.d/faa-clickhouse.conf > /dev/null"
+        printf '[Service]\nEnvironmentFile=/etc/grafana/faa-databricks.env\n' \
+        | sudo tee /etc/systemd/system/grafana-server.service.d/faa-databricks.conf > /dev/null"
 
 echo "Restarting Grafana"
 since=$(remote "date '+%Y-%m-%d %H:%M:%S'")
@@ -94,7 +126,7 @@ if [[ -n "$errors" ]]; then
   echo "$errors" >&2
   exit 1
 fi
-echo "Grafana provisioned: datasource 'ClickHouse FAA' (uid clickhouse-faa). Dashboards:"
+echo "Grafana provisioned: datasource 'Databricks FAA' (uid databricks-faa). Dashboards:"
 for f in "$PROJECT_DIR"/grafana/dashboards/*.json; do
   python3 -I -c 'import json, sys; d = json.load(open(sys.argv[1])); print("  %s: %s/d/%s" % (d["title"], sys.argv[2], d["uid"]))' "$f" "$GRAFANA_URL"
 done

@@ -32,15 +32,34 @@
   "templating": {
     "list": [
       {
+        "name": "catalog",
+        "label": "Catalog",
+        "type": "constant",
+        "hide": 2,
+        "query": "main",
+        "current": {
+          "text": "main",
+          "value": "main"
+        },
+        "options": [
+          {
+            "text": "main",
+            "value": "main",
+            "selected": true
+          }
+        ],
+        "description": "The Unity Catalog catalog holding the faa schema. scripts/grafana-provision.sh sets it from databricks.catalog."
+      },
+      {
         "name": "airport",
         "label": "Airport",
         "type": "query",
         "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "clickhouse-faa"
+          "type": "mullerpeter-databricks-datasource",
+          "uid": "databricks-faa"
         },
-        "query": "SELECT airport FROM faa.airport_station WHERE station IN (SELECT DISTINCT station FROM faa.weather) ORDER BY 1",
-        "definition": "SELECT airport FROM faa.airport_station WHERE station IN (SELECT DISTINCT station FROM faa.weather) ORDER BY 1",
+        "query": "SELECT airport FROM ${catalog}.faa.airport_station WHERE station IN (SELECT DISTINCT station FROM ${catalog}.faa.weather) ORDER BY 1",
+        "definition": "SELECT airport FROM ${catalog}.faa.airport_station WHERE station IN (SELECT DISTINCT station FROM ${catalog}.faa.weather) ORDER BY 1",
         "refresh": 1,
         "multi": false,
         "includeAll": false,
@@ -58,12 +77,12 @@
         "label": "Weather station",
         "type": "query",
         "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "clickhouse-faa"
+          "type": "mullerpeter-databricks-datasource",
+          "uid": "databricks-faa"
         },
         "hide": 2,
-        "query": "SELECT station FROM faa.airport_station WHERE airport = '${airport}'",
-        "definition": "SELECT station FROM faa.airport_station WHERE airport = '${airport}'",
+        "query": "SELECT station FROM ${catalog}.faa.airport_station WHERE airport = '${airport}'",
+        "definition": "SELECT station FROM ${catalog}.faa.airport_station WHERE airport = '${airport}'",
         "refresh": 1,
         "multi": false,
         "includeAll": false,
@@ -224,31 +243,31 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "-- Each airport's latest report in the time range, as a flight category.\nSELECT a.airport AS airport, a.airport_name AS Name, a.lat AS lat, a.lon AS lon,\n       w.category AS `Flight category`, formatDateTime(w.last, '%Y-%m-%d %H:%iZ') AS `Last report`\nFROM (\n    SELECT station, last,\n           arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                       [r.5, r.6, r.7, r.8], [r.1, r.2, r.3, r.4]) AS layers,\n           if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n           multiIf(r.9 IS NULL AND ceiling IS NULL AND r.1 = '', NULL,\n                   ceiling < 500 OR r.9 < 1, 'LIFR',\n                   ceiling < 1000 OR r.9 < 3, 'IFR',\n                   ceiling <= 3000 OR r.9 <= 5, 'MVFR', 'VFR') AS category\n    FROM (\n        SELECT station, max(valid) AS last,\n               argMax((skyc1, skyc2, skyc3, skyc4, skyl1, skyl2, skyl3, skyl4, vsby), valid) AS r\n        FROM faa.weather WHERE $__timeFilter(valid)\n        GROUP BY station\n    )\n) AS w\nINNER JOIN faa.airport_station AS a ON a.station = w.station",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Each airport's latest report in the time range, as a flight category.\nSELECT a.airport AS airport, a.airport_name AS Name, a.lat AS lat, a.lon AS lon,\n       w.category AS `Flight category`, concat(date_format(w.valid, 'yyyy-MM-dd HH:mm'), 'Z') AS `Last report`\nFROM (\n    SELECT station, valid, CASE WHEN vsby IS NULL AND ceiling IS NULL AND skyc1 = '' THEN NULL\n            WHEN ceiling < 500 OR vsby < 1 THEN 'LIFR'\n            WHEN ceiling < 1000 OR vsby < 3 THEN 'IFR'\n            WHEN ceiling <= 3000 OR vsby <= 5 THEN 'MVFR' ELSE 'VFR' END AS category\n    FROM (\n        SELECT r.*, array_min(array(if(r.skyc1 IN ('BKN', 'OVC', 'VV'), r.skyl1, NULL), if(r.skyc2 IN ('BKN', 'OVC', 'VV'), r.skyl2, NULL),\n                       if(r.skyc3 IN ('BKN', 'OVC', 'VV'), r.skyl3, NULL), if(r.skyc4 IN ('BKN', 'OVC', 'VV'), r.skyl4, NULL))) AS ceiling\n        FROM (\n            SELECT max_by(struct(station, valid, skyc1, skyc2, skyc3, skyc4, skyl1, skyl2, skyl3, skyl4, vsby), valid) AS r\n            FROM ${catalog}.faa.weather WHERE $__timeFilter(valid)\n            GROUP BY station\n        )\n    )\n) AS w\nINNER JOIN ${catalog}.faa.airport_station AS a ON a.station = w.station"
         },
         {
           "refId": "B",
-          "rawSql": "SELECT airport, airport_name AS Name, lat, lon FROM faa.airport_station WHERE airport = '${airport}' LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT airport, airport_name AS Name, lat, lon FROM ${catalog}.faa.airport_station WHERE airport = '${airport}' LIMIT 1"
         }
       ],
       "id": 1,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -310,20 +329,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT category AS `Flight category`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN vsby IS NULL AND ceiling IS NULL AND skyc1 = '' THEN NULL\n            WHEN ceiling < 500 OR vsby < 1 THEN 'LIFR'\n            WHEN ceiling < 1000 OR vsby < 3 THEN 'IFR'\n            WHEN ceiling <= 3000 OR vsby <= 5 THEN 'MVFR' ELSE 'VFR' END AS `Flight category`\nFROM (SELECT *, array_min(array(if(skyc1 IN ('BKN', 'OVC', 'VV'), skyl1, NULL), if(skyc2 IN ('BKN', 'OVC', 'VV'), skyl2, NULL),\n                       if(skyc3 IN ('BKN', 'OVC', 'VV'), skyl3, NULL), if(skyc4 IN ('BKN', 'OVC', 'VV'), skyl4, NULL))) AS ceiling FROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1))"
         }
       ],
       "id": 2,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -362,20 +381,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT if(sknt = 0, 'Calm', concat(ifNull(leftPad(toString(toUInt16(drct)), 3, '0'), 'VRB'), '° ',\n       toString(toUInt16(sknt)), ifNull(concat('G', toString(toUInt16(gust))), ''), ' kt')) AS `Wind`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT if(sknt = 0, 'Calm', concat(coalesce(lpad(CAST(CAST(drct AS INT) AS STRING), 3, '0'), 'VRB'), '° ',\n       CAST(CAST(sknt AS INT) AS STRING), coalesce(concat('G', CAST(CAST(gust AS INT) AS STRING)), ''), ' kt')) AS `Wind`\nFROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1)"
         }
       ],
       "id": 3,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -415,20 +434,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT vsby AS `Visibility`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT vsby AS `Visibility` FROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1)"
         }
       ],
       "id": 4,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -467,20 +486,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT ifNull(concat(toString(toUInt32(ceiling)), ' ft'), 'None') AS `Ceiling`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(concat(CAST(CAST(ceiling AS INT) AS STRING), ' ft'), 'None') AS `Ceiling`\nFROM (SELECT array_min(array(if(skyc1 IN ('BKN', 'OVC', 'VV'), skyl1, NULL), if(skyc2 IN ('BKN', 'OVC', 'VV'), skyl2, NULL),\n                       if(skyc3 IN ('BKN', 'OVC', 'VV'), skyl3, NULL), if(skyc4 IN ('BKN', 'OVC', 'VV'), skyl4, NULL))) AS ceiling FROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1))"
         }
       ],
       "id": 5,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -519,20 +538,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT concat(toString(round(tmpf)), ' / ', toString(round(dwpf)), ' °F') AS `Temp / dew point`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT concat(CAST(CAST(round(tmpf) AS INT) AS STRING), ' / ', CAST(CAST(round(dwpf) AS INT) AS STRING), ' °F') AS `Temp / dew point`\nFROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1)"
         }
       ],
       "id": 6,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -573,20 +592,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT alti AS `Altimeter`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT alti AS `Altimeter` FROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1)"
         }
       ],
       "id": 7,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -628,20 +647,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT nullIf(arrayStringConcat(arrayFilter(x -> x IS NOT NULL,\n       [multiIf(skyc1 IN ('', 'CLR'), NULL,\n               concat(transform(skyc1, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc1),\n                      ifNull(concat(' ', toString(toUInt32(skyl1)), ' ft'), ''))),\n        multiIf(skyc2 IN ('', 'CLR'), NULL,\n               concat(transform(skyc2, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc2),\n                      ifNull(concat(' ', toString(toUInt32(skyl2)), ' ft'), ''))),\n        multiIf(skyc3 IN ('', 'CLR'), NULL,\n               concat(transform(skyc3, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc3),\n                      ifNull(concat(' ', toString(toUInt32(skyl3)), ' ft'), ''))),\n        multiIf(skyc4 IN ('', 'CLR'), NULL,\n               concat(transform(skyc4, ['FEW', 'SCT', 'BKN', 'OVC', 'VV'],\n                                ['◔ FEW', '◑ SCT', '◕ BKN', '● OVC', '⊗ VV'], skyc4),\n                      ifNull(concat(' ', toString(toUInt32(skyl4)), ' ft'), '')))]), '   '), '') AS `Sky`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT nullif(concat_ws('   ',\n         CASE WHEN skyc1 IN ('', 'CLR') THEN NULL\n            ELSE concat(CASE skyc1 WHEN 'FEW' THEN '◔ FEW' WHEN 'SCT' THEN '◑ SCT' WHEN 'BKN' THEN '◕ BKN'\n                                   WHEN 'OVC' THEN '● OVC' WHEN 'VV' THEN '⊗ VV' ELSE skyc1 END,\n                        coalesce(concat(' ', CAST(CAST(skyl1 AS INT) AS STRING), ' ft'), '')) END,\n         CASE WHEN skyc2 IN ('', 'CLR') THEN NULL\n            ELSE concat(CASE skyc2 WHEN 'FEW' THEN '◔ FEW' WHEN 'SCT' THEN '◑ SCT' WHEN 'BKN' THEN '◕ BKN'\n                                   WHEN 'OVC' THEN '● OVC' WHEN 'VV' THEN '⊗ VV' ELSE skyc2 END,\n                        coalesce(concat(' ', CAST(CAST(skyl2 AS INT) AS STRING), ' ft'), '')) END,\n         CASE WHEN skyc3 IN ('', 'CLR') THEN NULL\n            ELSE concat(CASE skyc3 WHEN 'FEW' THEN '◔ FEW' WHEN 'SCT' THEN '◑ SCT' WHEN 'BKN' THEN '◕ BKN'\n                                   WHEN 'OVC' THEN '● OVC' WHEN 'VV' THEN '⊗ VV' ELSE skyc3 END,\n                        coalesce(concat(' ', CAST(CAST(skyl3 AS INT) AS STRING), ' ft'), '')) END,\n         CASE WHEN skyc4 IN ('', 'CLR') THEN NULL\n            ELSE concat(CASE skyc4 WHEN 'FEW' THEN '◔ FEW' WHEN 'SCT' THEN '◑ SCT' WHEN 'BKN' THEN '◕ BKN'\n                                   WHEN 'OVC' THEN '● OVC' WHEN 'VV' THEN '⊗ VV' ELSE skyc4 END,\n                        coalesce(concat(' ', CAST(CAST(skyl4 AS INT) AS STRING), ' ft'), '')) END), '') AS `Sky`\nFROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1)"
         }
       ],
       "id": 8,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -683,20 +702,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT metar AS `Latest METAR`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 1",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT metar AS `Latest METAR` FROM (SELECT * FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY valid DESC LIMIT 1)"
         }
       ],
       "id": 9,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -773,20 +792,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT valid AS time, category AS `Flight category`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time, category AS `Flight category`\nFROM (\n    SELECT *, CASE WHEN vsby IS NULL AND ceiling IS NULL AND skyc1 = '' THEN NULL\n            WHEN ceiling < 500 OR vsby < 1 THEN 'LIFR'\n            WHEN ceiling < 1000 OR vsby < 3 THEN 'IFR'\n            WHEN ceiling <= 3000 OR vsby <= 5 THEN 'MVFR' ELSE 'VFR' END AS category\n    FROM (SELECT *, array_min(array(if(skyc1 IN ('BKN', 'OVC', 'VV'), skyl1, NULL), if(skyc2 IN ('BKN', 'OVC', 'VV'), skyl2, NULL),\n                       if(skyc3 IN ('BKN', 'OVC', 'VV'), skyl3, NULL), if(skyc4 IN ('BKN', 'OVC', 'VV'), skyl4, NULL))) AS ceiling\n          FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid))\n)\nORDER BY time"
         }
       ],
       "id": 11,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -963,20 +982,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time,\n       if(skyc1 = 'FEW', skyl1, NULL) AS `◔ FEW`,\n       if(skyc1 = 'SCT', skyl1, NULL) AS `◑ SCT`,\n       if(skyc1 = 'BKN', skyl1, NULL) AS `◕ BKN`,\n       if(skyc1 = 'OVC', skyl1, NULL) AS `● OVC`,\n       if(skyc1 = 'VV', skyl1, NULL) AS `⊗ VV`,\n       if(skyc2 = 'FEW', skyl2, NULL) AS `◔ FEW (layer 2)`,\n       if(skyc2 = 'SCT', skyl2, NULL) AS `◑ SCT (layer 2)`,\n       if(skyc2 = 'BKN', skyl2, NULL) AS `◕ BKN (layer 2)`,\n       if(skyc2 = 'OVC', skyl2, NULL) AS `● OVC (layer 2)`,\n       if(skyc2 = 'VV', skyl2, NULL) AS `⊗ VV (layer 2)`,\n       if(skyc3 = 'FEW', skyl3, NULL) AS `◔ FEW (layer 3)`,\n       if(skyc3 = 'SCT', skyl3, NULL) AS `◑ SCT (layer 3)`,\n       if(skyc3 = 'BKN', skyl3, NULL) AS `◕ BKN (layer 3)`,\n       if(skyc3 = 'OVC', skyl3, NULL) AS `● OVC (layer 3)`,\n       if(skyc3 = 'VV', skyl3, NULL) AS `⊗ VV (layer 3)`,\n       if(skyc4 = 'FEW', skyl4, NULL) AS `◔ FEW (layer 4)`,\n       if(skyc4 = 'SCT', skyl4, NULL) AS `◑ SCT (layer 4)`,\n       if(skyc4 = 'BKN', skyl4, NULL) AS `◕ BKN (layer 4)`,\n       if(skyc4 = 'OVC', skyl4, NULL) AS `● OVC (layer 4)`,\n       if(skyc4 = 'VV', skyl4, NULL) AS `⊗ VV (layer 4)`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time,\n       if(skyc1 = 'FEW', skyl1, NULL) AS `◔ FEW`,\n       if(skyc1 = 'SCT', skyl1, NULL) AS `◑ SCT`,\n       if(skyc1 = 'BKN', skyl1, NULL) AS `◕ BKN`,\n       if(skyc1 = 'OVC', skyl1, NULL) AS `● OVC`,\n       if(skyc1 = 'VV', skyl1, NULL) AS `⊗ VV`,\n       if(skyc2 = 'FEW', skyl2, NULL) AS `◔ FEW (layer 2)`,\n       if(skyc2 = 'SCT', skyl2, NULL) AS `◑ SCT (layer 2)`,\n       if(skyc2 = 'BKN', skyl2, NULL) AS `◕ BKN (layer 2)`,\n       if(skyc2 = 'OVC', skyl2, NULL) AS `● OVC (layer 2)`,\n       if(skyc2 = 'VV', skyl2, NULL) AS `⊗ VV (layer 2)`,\n       if(skyc3 = 'FEW', skyl3, NULL) AS `◔ FEW (layer 3)`,\n       if(skyc3 = 'SCT', skyl3, NULL) AS `◑ SCT (layer 3)`,\n       if(skyc3 = 'BKN', skyl3, NULL) AS `◕ BKN (layer 3)`,\n       if(skyc3 = 'OVC', skyl3, NULL) AS `● OVC (layer 3)`,\n       if(skyc3 = 'VV', skyl3, NULL) AS `⊗ VV (layer 3)`,\n       if(skyc4 = 'FEW', skyl4, NULL) AS `◔ FEW (layer 4)`,\n       if(skyc4 = 'SCT', skyl4, NULL) AS `◑ SCT (layer 4)`,\n       if(skyc4 = 'BKN', skyl4, NULL) AS `◕ BKN (layer 4)`,\n       if(skyc4 = 'OVC', skyl4, NULL) AS `● OVC (layer 4)`,\n       if(skyc4 = 'VV', skyl4, NULL) AS `⊗ VV (layer 4)`\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 12,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1153,20 +1172,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time,\n       if(skyc1 = 'FEW', skyl1, NULL) AS `◔ FEW`,\n       if(skyc1 = 'SCT', skyl1, NULL) AS `◑ SCT`,\n       if(skyc1 = 'BKN', skyl1, NULL) AS `◕ BKN`,\n       if(skyc1 = 'OVC', skyl1, NULL) AS `● OVC`,\n       if(skyc1 = 'VV', skyl1, NULL) AS `⊗ VV`,\n       if(skyc2 = 'FEW', skyl2, NULL) AS `◔ FEW (layer 2)`,\n       if(skyc2 = 'SCT', skyl2, NULL) AS `◑ SCT (layer 2)`,\n       if(skyc2 = 'BKN', skyl2, NULL) AS `◕ BKN (layer 2)`,\n       if(skyc2 = 'OVC', skyl2, NULL) AS `● OVC (layer 2)`,\n       if(skyc2 = 'VV', skyl2, NULL) AS `⊗ VV (layer 2)`,\n       if(skyc3 = 'FEW', skyl3, NULL) AS `◔ FEW (layer 3)`,\n       if(skyc3 = 'SCT', skyl3, NULL) AS `◑ SCT (layer 3)`,\n       if(skyc3 = 'BKN', skyl3, NULL) AS `◕ BKN (layer 3)`,\n       if(skyc3 = 'OVC', skyl3, NULL) AS `● OVC (layer 3)`,\n       if(skyc3 = 'VV', skyl3, NULL) AS `⊗ VV (layer 3)`,\n       if(skyc4 = 'FEW', skyl4, NULL) AS `◔ FEW (layer 4)`,\n       if(skyc4 = 'SCT', skyl4, NULL) AS `◑ SCT (layer 4)`,\n       if(skyc4 = 'BKN', skyl4, NULL) AS `◕ BKN (layer 4)`,\n       if(skyc4 = 'OVC', skyl4, NULL) AS `● OVC (layer 4)`,\n       if(skyc4 = 'VV', skyl4, NULL) AS `⊗ VV (layer 4)`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time,\n       if(skyc1 = 'FEW', skyl1, NULL) AS `◔ FEW`,\n       if(skyc1 = 'SCT', skyl1, NULL) AS `◑ SCT`,\n       if(skyc1 = 'BKN', skyl1, NULL) AS `◕ BKN`,\n       if(skyc1 = 'OVC', skyl1, NULL) AS `● OVC`,\n       if(skyc1 = 'VV', skyl1, NULL) AS `⊗ VV`,\n       if(skyc2 = 'FEW', skyl2, NULL) AS `◔ FEW (layer 2)`,\n       if(skyc2 = 'SCT', skyl2, NULL) AS `◑ SCT (layer 2)`,\n       if(skyc2 = 'BKN', skyl2, NULL) AS `◕ BKN (layer 2)`,\n       if(skyc2 = 'OVC', skyl2, NULL) AS `● OVC (layer 2)`,\n       if(skyc2 = 'VV', skyl2, NULL) AS `⊗ VV (layer 2)`,\n       if(skyc3 = 'FEW', skyl3, NULL) AS `◔ FEW (layer 3)`,\n       if(skyc3 = 'SCT', skyl3, NULL) AS `◑ SCT (layer 3)`,\n       if(skyc3 = 'BKN', skyl3, NULL) AS `◕ BKN (layer 3)`,\n       if(skyc3 = 'OVC', skyl3, NULL) AS `● OVC (layer 3)`,\n       if(skyc3 = 'VV', skyl3, NULL) AS `⊗ VV (layer 3)`,\n       if(skyc4 = 'FEW', skyl4, NULL) AS `◔ FEW (layer 4)`,\n       if(skyc4 = 'SCT', skyl4, NULL) AS `◑ SCT (layer 4)`,\n       if(skyc4 = 'BKN', skyl4, NULL) AS `◕ BKN (layer 4)`,\n       if(skyc4 = 'OVC', skyl4, NULL) AS `● OVC (layer 4)`,\n       if(skyc4 = 'VV', skyl4, NULL) AS `⊗ VV (layer 4)`\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 13,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1235,20 +1254,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time, vsby AS Visibility\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time, vsby AS Visibility\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 14,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1334,20 +1353,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time, tmpf AS Temperature, dwpf AS `Dew point`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time, tmpf AS Temperature, dwpf AS `Dew point`\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 15,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1427,20 +1446,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time, multiIf(match(wxcodes, 'TS'), '⛈ Thunderstorm',\n               match(wxcodes, 'FZ(RA|DZ)'), '🧊 Freezing rain',\n               match(wxcodes, 'SN|SG|PL|GS|GR'), '❄ Snow / ice',\n               match(wxcodes, 'RA|SH'), '🌧 Rain',\n               match(wxcodes, 'DZ'), '🌦 Drizzle',\n               match(wxcodes, 'FG'), '🌫 Fog',\n               match(wxcodes, 'BR|HZ|FU|DU|SA'), '≡ Mist / haze',\n               wxcodes != '', '? Other', NULL) AS Weather, nullIf(wxcodes, '') AS Codes\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time,\n       CASE WHEN wxcodes RLIKE 'TS' THEN '⛈ Thunderstorm'\n            WHEN wxcodes RLIKE 'FZ(RA|DZ)' THEN '🧊 Freezing rain'\n            WHEN wxcodes RLIKE 'SN|SG|PL|GS|GR' THEN '❄ Snow / ice'\n            WHEN wxcodes RLIKE 'RA|SH' THEN '🌧 Rain'\n            WHEN wxcodes RLIKE 'DZ' THEN '🌦 Drizzle'\n            WHEN wxcodes RLIKE 'FG' THEN '🌫 Fog'\n            WHEN wxcodes RLIKE 'BR|HZ|FU|DU|SA' THEN '≡ Mist / haze'\n            WHEN wxcodes != '' THEN '? Other' END AS Weather,\n       nullif(wxcodes, '') AS Codes\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 16,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1481,20 +1500,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time, multiIf(sknt IS NULL, NULL, sknt = 0, '○ Calm', drct IS NULL, '↻ Variable',\n               ['↓ N', '↙ NE', '← E', '↖ SE', '↑ S', '↗ SW', '→ W', '↘ NW'][intDiv(toUInt16(drct + 22.5) % 360, 45) + 1]) AS `Wind from`\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time,\n       CASE WHEN sknt IS NULL THEN NULL WHEN sknt = 0 THEN '○ Calm' WHEN drct IS NULL THEN '↻ Variable'\n            ELSE element_at(array('↓ N', '↙ NE', '← E', '↖ SE', '↑ S', '↗ SW', '→ W', '↘ NW'),\n                            CAST(CAST(drct + 22.5 AS INT) % 360 DIV 45 + 1 AS INT)) END AS `Wind from`\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 17,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1577,20 +1596,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time, sknt AS Wind, gust AS Gusts\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time, sknt AS Wind, gust AS Gusts\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 18,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1691,20 +1710,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT valid AS time, p01i AS `Precipitation`, alti AS Altimeter\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT valid AS time, p01i AS `Precipitation`, alti AS Altimeter\nFROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid) ORDER BY time"
         }
       ],
       "id": 19,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     },
     {
@@ -1792,20 +1811,20 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "WITH arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,\n                   [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,\n     if(empty(layers), NULL, arrayMin(layers)) AS ceiling,\n     multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', NULL,\n             ceiling < 500 OR vsby < 1, 'LIFR',\n             ceiling < 1000 OR vsby < 3, 'IFR',\n             ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category\nSELECT formatDateTime(valid, '%Y-%m-%d %H:%iZ') AS `Time (UTC)`, category AS `Flight category`, metar AS METAR\nFROM faa.weather FINAL WHERE station = '${station}' AND $__timeFilter(valid)\nORDER BY valid DESC LIMIT 2000",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT concat(date_format(valid, 'yyyy-MM-dd HH:mm'), 'Z') AS `Time (UTC)`, category AS `Flight category`, metar AS METAR\nFROM (\n    SELECT *, CASE WHEN vsby IS NULL AND ceiling IS NULL AND skyc1 = '' THEN NULL\n            WHEN ceiling < 500 OR vsby < 1 THEN 'LIFR'\n            WHEN ceiling < 1000 OR vsby < 3 THEN 'IFR'\n            WHEN ceiling <= 3000 OR vsby <= 5 THEN 'MVFR' ELSE 'VFR' END AS category\n    FROM (SELECT *, array_min(array(if(skyc1 IN ('BKN', 'OVC', 'VV'), skyl1, NULL), if(skyc2 IN ('BKN', 'OVC', 'VV'), skyl2, NULL),\n                       if(skyc3 IN ('BKN', 'OVC', 'VV'), skyl3, NULL), if(skyc4 IN ('BKN', 'OVC', 'VV'), skyl4, NULL))) AS ceiling\n          FROM ${catalog}.faa.weather WHERE station = '${station}' AND $__timeFilter(valid))\n)\nORDER BY valid DESC LIMIT 2000"
         }
       ],
       "id": 20,
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       }
     }
   ],

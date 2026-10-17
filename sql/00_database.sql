@@ -12,6 +12,13 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Run with:  java -jar target/clickhouse-faadata-demo-*-all.jar schema sql/*.sql
+-- Run with:  scripts/create-database.sh
 -- Files run in name order; add tables as 10_flights.sql, 20_weather.sql, ...
-CREATE DATABASE IF NOT EXISTS faa;
+-- Every table is faa.<table> in the catalog set by databricks.catalog, which
+-- the scripts and the loader use as their default catalog.
+CREATE SCHEMA IF NOT EXISTS faa
+COMMENT 'FAA flights, weather and aircraft registry (databricks-faadata-demo)';
+
+-- Where the loader uploads files for read_files to read; they are deleted
+-- once loaded.
+CREATE VOLUME IF NOT EXISTS faa.staging;

@@ -13,101 +13,145 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Rebuilds faa.flight_weather (flights joined to the weather at both ends)
-# one month at a time, replacing each month's partition. Run after loading
+# Rebuilds faa.flight_weather (flights joined to the weather at both ends):
+# all of it, or just the months given, in one statement. Run after loading
 # flights, stations or weather.
 #
 #   scripts/build-flight-weather.sh            every month in faa.ontime
 #   scripts/build-flight-weather.sh 202501     just these months
+#
+# Databricks has no ASOF JOIN, so each end finds its METAR with a window
+# instead: flights and observations go into one stream per station, in time
+# order (an observation before a flight at the same minute), and
+# last_value(... IGNORE NULLS) carries the latest observation forward onto each
+# flight. Reports over 2 hours old are not used, so the stream is split by
+# station and day, with each observation also put into the next day's: every
+# window is small, and the whole build runs as one query.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
-ch_check_connection
+dbx_check_connection
 
-months=("$@")
-[[ ${#months[@]} -gt 0 ]] || months=($(ch_query "SELECT DISTINCT toYYYYMM(FlightDate) FROM faa.ontime ORDER BY 1"))
+flights="TRUE"
+weather="TRUE"
+insert="INSERT OVERWRITE faa.flight_weather"
+if [[ $# -gt 0 ]]; then
+  flights=$(months_where FlightDate "$@")
+  insert="INSERT INTO faa.flight_weather REPLACE WHERE $flights"
+  # The observations those months' flights can match: departures start at most
+  # 11 hours before their month in UTC, and the last arrivals (checked over
+  # 2016-2026) end within a day of it.
+  first=$(printf '%s\n' "$@" | sort | head -1); last=$(printf '%s\n' "$@" | sort | tail -1)
+  weather="valid >= TIMESTAMP '${first:0:4}-${first:4:2}-01T00:00:00Z' - INTERVAL 1 DAY
+           AND valid < TIMESTAMP '${last:0:4}-${last:4:2}-01T00:00:00Z' + INTERVAL 1 MONTH + INTERVAL 2 DAY"
+fi
 
-# ClickHouse needs a constant time zone to read a local time, so generate one
-# multiIf branch per time zone in use: tz = 'X', toDateTime(local, 'X'), ...
-utc_of() {  # utc_of LOCAL_STRING_EXPR TZ_EXPR
-  local branches=""
-  for tz in $(ch_query "SELECT DISTINCT tzname FROM faa.airport_station WHERE tzname != '' ORDER BY 1"); do
-    branches+="$2 = '$tz', toDateTime($1, '$tz'), "
-  done
-  echo "toTimeZone(multiIf(${branches}NULL), 'UTC')"
+# obs PREFIX: the matched observation's fields, NULL (or '') if it is over 2 hours old.
+obs() {
+  local w="$1w" t
+  [[ $1 == o ]] && t=fl.sched_dep_utc || t=sched_arr_utc
+  local fresh="$w.valid IS NOT NULL AND timestampdiff(MINUTE, $w.valid, $t) <= 120"
+  echo "if($fresh, $w.valid, NULL) AS ${1}_obs_time,
+        if($fresh, $w.tmpf, NULL) AS ${1}_tmpf, if($fresh, $w.sknt, NULL) AS ${1}_sknt,
+        if($fresh, $w.gust, NULL) AS ${1}_gust, if($fresh, $w.vsby, NULL) AS ${1}_vsby,
+        if($fresh, $w.ceiling, NULL) AS ${1}_ceiling, if($fresh, $w.p01i, NULL) AS ${1}_p01i,
+        if($fresh, $w.wxcodes, '') AS ${1}_wxcodes, if($fresh, $w.category, '') AS ${1}_category,
+        if($fresh, $w.wx, '') AS ${1}_wx"
 }
 
-# Local scheduled departure as 'YYYY-MM-DD hh:mm:00'; BTS writes midnight as 2400.
-LOCAL_DEP="concat(toString(o.FlightDate + (o.CRSDepTime >= 2400)), ' ',
-                  leftPad(toString(intDiv(o.CRSDepTime, 100) % 24), 2, '0'), ':',
-                  leftPad(toString(o.CRSDepTime % 100), 2, '0'), ':00')"
-DEP_UTC=$(utc_of "$LOCAL_DEP" "ao.tzname")
+# The window: the latest observation at or before each row, in its station and day.
+LATEST="last_value(w, true) OVER (PARTITION BY station, day ORDER BY t, kind
+                                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
 
-# Weather with derived ceiling, flight category and present-weather class, for
-# the observations a month's flights can match. Each end takes the latest report
-# at or before its scheduled UTC time, and reports over 2 hours old are not used,
-# so the month from a day before to two days after is enough: departures start
-# at most 11 hours before the month in UTC, and the last arrivals (checked over
-# 2016-2026) end within a day of it. Without this window, every month's build
-# would read all the weather, twice.
-wx() {  # wx YYYYMM
-  local start="toDateTime(toDate('${1:0:4}-${1:4:2}-01'), 'UTC')"
-  echo "
-  SELECT station, valid, tmpf, sknt, gust, vsby, p01i, wxcodes,
-         arrayFilter((l, c) -> c IN ('BKN', 'OVC', 'VV') AND l IS NOT NULL,
-                     [skyl1, skyl2, skyl3, skyl4], [skyc1, skyc2, skyc3, skyc4]) AS layers,
-         if(empty(layers), NULL, arrayMin(layers)) AS ceiling,
-         multiIf(vsby IS NULL AND ceiling IS NULL AND skyc1 = '', '',
-                 ceiling < 500 OR vsby < 1, 'LIFR',
-                 ceiling < 1000 OR vsby < 3, 'IFR',
-                 ceiling <= 3000 OR vsby <= 5, 'MVFR', 'VFR') AS category,
-         multiIf(match(wxcodes, 'TS'), 'Thunderstorm', match(wxcodes, 'FZ'), 'Freezing',
-                 match(wxcodes, 'SN|SG|PL|GS|GR'), 'Snow/ice', match(wxcodes, 'FG'), 'Fog',
-                 match(wxcodes, 'RA|DZ|SH'), 'Rain', 'None') AS wx
-  FROM faa.weather
-  WHERE valid >= $start - INTERVAL 1 DAY AND valid < $start + INTERVAL 1 MONTH + INTERVAL 2 DAY"
-}
-
-# Fields copied from the matched observation, NULLed if it is over 2 hours old.
-obs() {  # obs ALIAS PREFIX SCHED_COL
-  local fresh="$1.valid > toDateTime(0) AND dateDiff('minute', $1.valid, $3) <= 120"
-  echo "if($fresh, $1.valid, NULL) AS ${2}_obs_time,
-        if($fresh, $1.tmpf, NULL) AS ${2}_tmpf, if($fresh, $1.sknt, NULL) AS ${2}_sknt,
-        if($fresh, $1.gust, NULL) AS ${2}_gust, if($fresh, $1.vsby, NULL) AS ${2}_vsby,
-        if($fresh, $1.ceiling, NULL) AS ${2}_ceiling, if($fresh, $1.p01i, NULL) AS ${2}_p01i,
-        if($fresh, $1.wxcodes, '') AS ${2}_wxcodes, if($fresh, $1.category, '') AS ${2}_category,
-        if($fresh, $1.wx, '') AS ${2}_wx"
-}
-
-for m in "${months[@]}"; do
-  ch_query "ALTER TABLE faa.flight_weather DROP PARTITION $m"
-  ch_query "
-    INSERT INTO faa.flight_weather
-    SELECT f.FlightDate, f.Reporting_Airline, f.tail, f.Origin, f.Dest, f.CRSDepTime,
-           f.sched_dep_utc, f.sched_arr_utc, f.DepDelay, f.DepDel15, f.ArrDelay, f.ArrDel15,
-           f.Cancelled, f.CancellationCode, f.Diverted, f.WeatherDelay, f.NASDelay,
-           $(obs ow o f.sched_dep_utc),
-           $(obs dw d f.sched_arr_utc)
+dbx_run "
+$insert
+WITH
+-- Each flight, with its stations and its scheduled times in UTC. BTS local
+-- times are HHMM numbers, with midnight as 2400; make_timestamp reads them in
+-- the airport's time zone.
+f AS (
+  SELECT fl, o_station, d_station, fl.sched_dep_utc,
+         timestampadd(MINUTE, CAST(coalesce(CRSElapsedTime, 0) AS INT), fl.sched_dep_utc) AS sched_arr_utc
+  FROM (
+    SELECT struct(o.FlightDate, o.Reporting_Airline, o.tail, o.Origin, o.Dest, o.CRSDepTime,
+                  make_timestamp(year(dep_day), month(dep_day), day(dep_day),
+                                 o.CRSDepTime DIV 100 % 24, o.CRSDepTime % 100, 0, ao.tzname) AS sched_dep_utc,
+                  o.DepDelay, o.DepDel15, o.ArrDelay, o.ArrDel15, o.Cancelled, o.CancellationCode,
+                  o.Diverted, o.WeatherDelay, o.NASDelay) AS fl,
+           o.CRSElapsedTime, ao.station AS o_station, ad.station AS d_station
+    FROM (SELECT *, date_add(FlightDate, if(CRSDepTime >= 2400, 1, 0)) AS dep_day
+          FROM faa.ontime WHERE $flights) AS o
+    INNER JOIN faa.airport_station AS ao ON ao.airport = o.Origin
+    LEFT JOIN faa.airport_station AS ad ON ad.airport = o.Dest
+    WHERE ao.tzname != ''
+  )
+),
+-- Weather with derived ceiling, flight category and present-weather class.
+wx AS (
+  SELECT station, valid,
+         struct(valid, tmpf, sknt, gust, vsby, p01i, wxcodes, ceiling,
+                CASE WHEN vsby IS NULL AND ceiling IS NULL AND skyc1 = '' THEN ''
+                     WHEN ceiling < 500 OR vsby < 1 THEN 'LIFR'
+                     WHEN ceiling < 1000 OR vsby < 3 THEN 'IFR'
+                     WHEN ceiling <= 3000 OR vsby <= 5 THEN 'MVFR'
+                     ELSE 'VFR' END AS category,
+                CASE WHEN wxcodes RLIKE 'TS' THEN 'Thunderstorm'
+                     WHEN wxcodes RLIKE 'FZ' THEN 'Freezing'
+                     WHEN wxcodes RLIKE 'SN|SG|PL|GS|GR' THEN 'Snow/ice'
+                     WHEN wxcodes RLIKE 'FG' THEN 'Fog'
+                     WHEN wxcodes RLIKE 'RA|DZ|SH' THEN 'Rain'
+                     ELSE 'None' END AS wx) AS w
+  FROM (
+    SELECT *,
+           -- the lowest broken, overcast or obscured layer
+           array_min(array(if(skyc1 IN ('BKN', 'OVC', 'VV'), skyl1, NULL), if(skyc2 IN ('BKN', 'OVC', 'VV'), skyl2, NULL),
+                           if(skyc3 IN ('BKN', 'OVC', 'VV'), skyl3, NULL), if(skyc4 IN ('BKN', 'OVC', 'VV'), skyl4, NULL)))
+             AS ceiling
+    FROM faa.weather
+    WHERE $weather
+  )
+),
+-- Each observation in its own day's window and the next day's.
+wx_days AS (
+  SELECT station, valid, date_add(CAST(valid AS DATE), d) AS day, w
+  FROM wx LATERAL VIEW explode(array(0, 1)) AS d
+),
+dep AS (
+  SELECT * EXCEPT (kind, w) FROM (
+    SELECT kind, fl, d_station, sched_arr_utc, $LATEST AS ow, w
     FROM (
-        SELECT o.FlightDate, o.Reporting_Airline, o.tail, o.Origin, o.Dest, o.CRSDepTime,
-               o.DepDelay, o.DepDel15, o.ArrDelay, o.ArrDel15, o.Cancelled, o.CancellationCode,
-               o.Diverted, o.WeatherDelay, o.NASDelay,
-               ao.station AS o_station, ad.station AS d_station,
-               $DEP_UTC AS sched_dep_utc,
-               sched_dep_utc + toIntervalMinute(toInt32(ifNull(o.CRSElapsedTime, 0))) AS sched_arr_utc
-        FROM faa.ontime AS o
-        LEFT JOIN faa.airport_station AS ao ON ao.airport = o.Origin
-        LEFT JOIN faa.airport_station AS ad ON ad.airport = o.Dest
-        WHERE toYYYYMM(o.FlightDate) = $m AND ao.tzname != ''
-    ) AS f
-    ASOF LEFT JOIN ($(wx "$m")) AS ow ON ow.station = f.o_station AND ow.valid <= f.sched_dep_utc
-    ASOF LEFT JOIN ($(wx "$m")) AS dw ON dw.station = f.d_station AND dw.valid <= f.sched_arr_utc
-    SETTINGS join_use_nulls = 0"
-  echo "$m: $(ch_query "SELECT count() FROM faa.flight_weather WHERE toYYYYMM(FlightDate) = $m") flights"
-done
+      SELECT 1 AS kind, o_station AS station, sched_dep_utc AS t, CAST(sched_dep_utc AS DATE) AS day,
+             fl, d_station, sched_arr_utc, NULL AS w
+      FROM f
+      UNION ALL
+      SELECT 0, station, valid, day, NULL, NULL, NULL, w FROM wx_days
+    )
+  )
+  WHERE kind = 1
+),
+arr AS (
+  SELECT * EXCEPT (kind, w) FROM (
+    SELECT kind, fl, ow, sched_arr_utc, $LATEST AS dw, w
+    FROM (
+      SELECT 1 AS kind, d_station AS station, sched_arr_utc AS t, CAST(sched_arr_utc AS DATE) AS day,
+             fl, ow, sched_arr_utc, NULL AS w
+      FROM dep
+      UNION ALL
+      SELECT 0, station, valid, day, NULL, NULL, NULL, w FROM wx_days
+    )
+  )
+  WHERE kind = 1
+)
+SELECT fl.FlightDate, fl.Reporting_Airline, fl.tail, fl.Origin, fl.Dest, fl.CRSDepTime,
+       fl.sched_dep_utc, sched_arr_utc, fl.DepDelay, fl.DepDel15, fl.ArrDelay, fl.ArrDel15,
+       fl.Cancelled, fl.CancellationCode, fl.Diverted, fl.WeatherDelay, fl.NASDelay,
+       $(obs o),
+       $(obs d)
+FROM arr"
+dbx_run "OPTIMIZE faa.flight_weather"
 
-ch_query "
-  SELECT count() AS flights,
-         round(100 * countIf(o_category != '') / flights, 1) AS pct_origin_wx,
-         round(100 * countIf(d_category != '') / flights, 1) AS pct_dest_wx,
-         (SELECT count() FROM faa.ontime) AS ontime_flights
-  FROM faa.flight_weather FORMAT PrettyCompact"
+dbx_query "
+  SELECT count(*) AS flights,
+         round(100 * count_if(o_category != '') / count(*), 1) AS pct_origin_wx,
+         round(100 * count_if(d_category != '') / count(*), 1) AS pct_dest_wx,
+         (SELECT count(*) FROM faa.ontime) AS ontime_flights
+  FROM faa.flight_weather"

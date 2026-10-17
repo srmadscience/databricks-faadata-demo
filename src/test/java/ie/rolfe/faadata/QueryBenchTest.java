@@ -37,8 +37,8 @@ class QueryBenchTest {
         int[] scales = new int[4];
         for (int i = 0; i < 100_000; i++) {
             QueryBench.Query q = workload.next(random);
-            LocalDate from = LocalDate.parse((String) q.params().get("from"));
-            LocalDate to = LocalDate.parse((String) q.params().get("to"));
+            LocalDate from = ((java.sql.Date) q.params().get(1)).toLocalDate();
+            LocalDate to = ((java.sql.Date) q.params().get(2)).toLocalDate();
             assertTrue(!from.isBefore(first) && !to.isAfter(last), q.description());
             assertEquals(q.days(), ChronoUnit.DAYS.between(from, to) + 1, q.description());
             assertTrue(q.days() >= 1 && q.days() <= QueryBench.FlightHistory.MAX_DAYS, q.description());

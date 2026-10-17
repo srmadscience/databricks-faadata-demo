@@ -21,6 +21,12 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -31,15 +37,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Function;
-
-import com.clickhouse.client.api.Client;
-import com.clickhouse.client.api.data_formats.ClickHouseBinaryFormatReader;
-import com.clickhouse.client.api.query.QueryResponse;
 
 /**
  * Query performance test: issues randomly generated queries asynchronously and
@@ -55,15 +59,18 @@ import com.clickhouse.client.api.query.QueryResponse;
  * was due to start, so time spent waiting for a free thread counts: when the
  * server falls behind, latencies grow rather than the rate quietly dropping.
  * Without --rate, N threads each issue queries back to back, which measures the
- * most the server can do. A query that receives nothing for --timeout seconds
- * (default 60) counts as an error: a connection whose server end has gone can
- * otherwise wait for ever. --log writes one line per query; --results appends a
- * summary line to the test results file.
+ * most the SQL warehouse can do for one client. A query still running after
+ * --timeout seconds (default 60) is cancelled and counts as an error. --log
+ * writes one line per query; --results appends a summary line to the test
+ * results file.
+ * <p>
+ * Each thread has its own JDBC connection, with the result cache off
+ * ({@code use_cached_result = false}), so every query really runs.
  */
 public final class QueryBench {
 
     /** One query to run, and how to describe it in the log. */
-    record Query(String sql, Map<String, Object> params, String description, long days) {
+    record Query(String sql, List<Object> params, String description, long days) {
     }
 
     /** A workload makes random queries; it may read what it needs from the server first. */
@@ -71,19 +78,20 @@ public final class QueryBench {
         Query next(Random random);
     }
 
-    private static final Map<String, Function<Client, Workload>> WORKLOADS = Map.of(
+    /** Makes a workload, reading what it needs over the connection. */
+    interface WorkloadFactory {
+        Workload create(Connection connection) throws SQLException;
+    }
+
+    private static final Map<String, WorkloadFactory> WORKLOADS = Map.of(
             "flight-history", FlightHistory::new);
 
     /**
      * Every flight of one aircraft, picked at random from all those with
      * flights, between two random dates from 1 day to 10 years apart. Range
      * lengths are spread evenly on a log scale, so days, weeks, months and
-     * years are equally likely.
-     * <p>
-     * optimize_read_in_order is off because ontime is itself sorted by date:
-     * with it on, ORDER BY FlightDate makes ClickHouse read the table in order
-     * and pass over the by_tail projection (see sql/16_ontime_by_tail.sql),
-     * scanning every flight in the range instead of one aircraft's.
+     * years are equally likely. faa.ontime is clustered by tail and date, so
+     * the warehouse skips the files that hold none of that aircraft's flights.
      */
     static final class FlightHistory implements Workload {
         static final int MAX_DAYS = 3653;
@@ -92,25 +100,34 @@ public final class QueryBench {
                        Origin, Dest, CRSDepTime, DepTime, DepDelay, CRSArrTime, ArrTime, ArrDelay,
                        Cancelled, CancellationCode, Diverted, Distance
                 FROM faa.ontime
-                WHERE tail = {tail:String} AND FlightDate BETWEEN {from:Date} AND {to:Date}
-                ORDER BY FlightDate, CRSDepTime
-                SETTINGS optimize_read_in_order = 0""";
+                WHERE tail = ? AND FlightDate BETWEEN ? AND ?
+                ORDER BY FlightDate, CRSDepTime""";
 
         private final List<String> tails;
         private final LocalDate first;
         private final LocalDate last;
 
-        FlightHistory(Client client) {
-            // Real registrations only: not the empty tail of unassigned flights,
-            // nor placeholders such as '#N/A'.
-            tails = client.queryAll("SELECT DISTINCT tail FROM faa.tail_day WHERE match(tail, '^N[0-9][0-9A-Z]*$') ORDER BY tail")
-                    .stream().map(r -> r.getString(1)).toList();
-            if (tails.isEmpty()) {
-                throw new IllegalStateException("faa.tail_day is empty: load flights and run build-tail-day.sh first");
+        FlightHistory(Connection connection) throws SQLException {
+            List<String> found = new ArrayList<>();
+            try (Statement st = connection.createStatement()) {
+                // Real registrations only: not the empty tail of unassigned flights,
+                // nor placeholders such as '#N/A'.
+                try (ResultSet rs = st.executeQuery(
+                        "SELECT DISTINCT tail FROM faa.tail_day WHERE tail RLIKE '^N[0-9][0-9A-Z]*$' ORDER BY tail")) {
+                    while (rs.next()) {
+                        found.add(rs.getString(1));
+                    }
+                }
+                if (found.isEmpty()) {
+                    throw new IllegalStateException("faa.tail_day is empty: load flights and run build-tail-day.sh first");
+                }
+                try (ResultSet rs = st.executeQuery("SELECT min(FlightDate), max(FlightDate) FROM faa.tail_day")) {
+                    rs.next();
+                    first = rs.getDate(1).toLocalDate();
+                    last = rs.getDate(2).toLocalDate();
+                }
             }
-            var range = client.queryAll("SELECT min(FlightDate), max(FlightDate) FROM faa.tail_day").get(0);
-            first = range.getLocalDate(1);
-            last = range.getLocalDate(2);
+            tails = found;
             System.out.printf("flight-history: %,d aircraft, flights %s to %s%n", tails.size(), first, last);
         }
 
@@ -127,7 +144,7 @@ public final class QueryBench {
             long days = Math.min(span, Math.round(Math.exp(random.nextDouble() * Math.log(MAX_DAYS))));
             LocalDate from = first.plusDays((long) (random.nextDouble() * (span - days + 1)));
             LocalDate to = from.plusDays(days - 1);
-            return new Query(SQL, Map.of("tail", tail, "from", from.toString(), "to", to.toString()),
+            return new Query(SQL, List.of(tail, Date.valueOf(from), Date.valueOf(to)),
                     tail + "," + from + "," + to, days);
         }
     }
@@ -143,7 +160,7 @@ public final class QueryBench {
         }
     }
 
-    public static void run(ClickHouseConfig config, List<String> args) throws Exception {
+    public static void run(DatabricksConfig config, List<String> args) throws Exception {
         if (args.isEmpty() || !WORKLOADS.containsKey(args.get(0))) {
             throw new IllegalArgumentException("workload must be one of " + WORKLOADS.keySet());
         }
@@ -174,18 +191,85 @@ public final class QueryBench {
             i++;
         }
 
-        try (Client client = config.clientBuilder()
-                .setMaxConnections(threads)
-                .setSocketTimeout(timeout, ChronoUnit.SECONDS)
-                .build()) {
+        try (Connections client = new Connections(config, threads, timeout)) {
             run(client, workloadName, rate, threads, duration, seed, log, results, commit, comment);
         }
     }
 
-    private static void run(Client client, String workloadName, double rate, int threads, int duration, long seed,
+    /**
+     * A JDBC connection for each thread, all opened at the start, so that no
+     * timed query waits for one to open. A query takes one and gives it back.
+     */
+    static final class Connections implements AutoCloseable {
+        private final List<Connection> all = Collections.synchronizedList(new ArrayList<>());
+        private final LinkedBlockingQueue<Connection> idle = new LinkedBlockingQueue<>();
+        private final int timeout;
+
+        Connections(DatabricksConfig config, int count, int timeout) throws Exception {
+            this.timeout = timeout;
+            ExecutorService pool = Executors.newFixedThreadPool(Math.min(count, 16));
+            try {
+                List<Future<Connection>> opening = new ArrayList<>();
+                for (int i = 0; i < count; i++) {
+                    opening.add(pool.submit(() -> {
+                        Connection c = config.newConnection();
+                        all.add(c);
+                        try (Statement st = c.createStatement()) {
+                            st.execute("SET use_cached_result = false");
+                        }
+                        return c;
+                    }));
+                }
+                for (Future<Connection> f : opening) {
+                    try {
+                        idle.add(f.get());
+                    } catch (ExecutionException e) {
+                        close();
+                        throw e.getCause() instanceof Exception cause ? cause : e;
+                    }
+                }
+            } finally {
+                pool.shutdown();
+            }
+        }
+
+        Connection take() throws InterruptedException {
+            return idle.take();
+        }
+
+        void release(Connection c) {
+            idle.add(c);
+        }
+
+        int timeout() {
+            return timeout;
+        }
+
+        @Override
+        public void close() {
+            for (Connection c : all) {
+                try {
+                    c.close();
+                } catch (SQLException e) {
+                    // closing anyway
+                }
+            }
+        }
+    }
+
+    private static void run(Connections client, String workloadName, double rate, int threads, int duration, long seed,
             Path log, Path results, String commit, String comment) throws Exception {
-        Workload workload = WORKLOADS.get(workloadName).apply(client);
-        String version = client.queryAll("SELECT version()").get(0).getString(1);
+        Workload workload;
+        String version;
+        Connection c = client.take();
+        try (Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("SELECT current_version().dbsql_version")) {
+            rs.next();
+            version = "Databricks SQL " + rs.getString(1);
+            workload = WORKLOADS.get(workloadName).create(c);
+        } finally {
+            client.release(c);
+        }
         String runStart = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ"));
         System.out.printf("%s for %d s, %s, %d threads, seed %d%n", workloadName, duration,
                 rate > 0 ? rate + " queries/s" : "back to back", threads, seed);
@@ -204,7 +288,7 @@ public final class QueryBench {
             try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(results,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND))) {
                 if (fresh) {
-                    out.println("run_start,git_commit,clickhouse_version,workload,rate,threads,seconds,"
+                    out.println("run_start,git_commit,server,workload,rate,threads,seconds,"
                             + "queries,errors,qps,p50_ms,p90_ms,p99_ms,max_ms,comment");
                 }
                 out.printf(Locale.ROOT, "%s,%s,%s,%s,%s,%d,%d,%s,%s%n", runStart, commit, version, workloadName,
@@ -215,7 +299,7 @@ public final class QueryBench {
     }
 
     /** Starts queries at a fixed rate, each on the next free thread. */
-    private static List<Result> openLoop(Client client, Workload workload, Random random, double rate,
+    private static List<Result> openLoop(Connections client, Workload workload, Random random, double rate,
             int threads, int duration) throws InterruptedException {
         List<Result> done = Collections.synchronizedList(new ArrayList<>());
         ExecutorService pool = Executors.newFixedThreadPool(threads);
@@ -239,7 +323,7 @@ public final class QueryBench {
     }
 
     /** Each thread issues queries back to back until the time is up. */
-    private static List<Result> closedLoop(Client client, Workload workload, long seed, int threads,
+    private static List<Result> closedLoop(Connections client, Workload workload, long seed, int threads,
             int duration) throws InterruptedException {
         List<Result> done = Collections.synchronizedList(new ArrayList<>());
         long start = System.nanoTime();
@@ -260,17 +344,30 @@ public final class QueryBench {
     }
 
     /** Runs one query, reading every row, and never throws. */
-    private static Result run(Client client, Query query, long start, long due) {
+    private static Result run(Connections client, Query query, long start, long due) {
         long sent = System.nanoTime();
         long rows = 0;
         String error = null;
-        try (QueryResponse response = client.query(query.sql(), query.params()).get()) {
-            ClickHouseBinaryFormatReader reader = client.newBinaryFormatReader(response);
-            while (reader.next() != null) {
-                rows++;
+        Connection c = null;
+        try {
+            c = client.take();
+            try (PreparedStatement ps = c.prepareStatement(query.sql())) {
+                ps.setQueryTimeout(client.timeout());
+                for (int i = 0; i < query.params().size(); i++) {
+                    ps.setObject(i + 1, query.params().get(i));
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        rows++;
+                    }
+                }
             }
         } catch (Exception e) {
-            error = String.valueOf(e.getCause() != null ? e.getCause().getMessage() : e.getMessage());
+            error = String.valueOf(e.getMessage());
+        } finally {
+            if (c != null) {
+                client.release(c);
+            }
         }
         return new Result(due - start, sent - start, System.nanoTime() - start, query, rows, error);
     }

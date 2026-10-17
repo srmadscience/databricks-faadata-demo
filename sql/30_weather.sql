@@ -15,45 +15,47 @@
 -- IEM ASOS observations (METAR routine + special reports), times in UTC.
 -- https://mesonet.agron.iastate.edu/request/download.phtml
 -- Units: tmpf/dwpf/feel F, relh %, drct degrees, sknt/gust knots, p01i inches
--- (0.0001 = trace; test with p01i < 0.001, as Float32 != 0.0001), alti inHg, mslp mb, vsby miles, skyl feet.
--- ReplacingMergeTree drops duplicate (station, valid) rows, so reloads are safe;
--- add FINAL to a query if it must not see not-yet-merged duplicates.
+-- (0.0001 = trace), alti inHg, mslp mb, vsby miles, skyl feet.
+-- One row per (station, valid): load-weather.sh loads into faa.weather_load
+-- and MERGEs from there, so reloads never duplicate a report.
 CREATE TABLE IF NOT EXISTS faa.weather
 (
-    station           LowCardinality(String),
-    valid             DateTime('UTC'),
-    lon               Float32,
-    lat               Float32,
-    elevation         Nullable(Float32),
-    tmpf              Nullable(Float32),
-    dwpf              Nullable(Float32),
-    relh              Nullable(Float32),
-    drct              Nullable(Float32),
-    sknt              Nullable(Float32),
-    p01i              Nullable(Float32),
-    alti              Nullable(Float32),
-    mslp              Nullable(Float32),
-    vsby              Nullable(Float32),
-    gust              Nullable(Float32),
-    skyc1             LowCardinality(String),
-    skyc2             LowCardinality(String),
-    skyc3             LowCardinality(String),
-    skyc4             LowCardinality(String),
-    skyl1             Nullable(Float32),
-    skyl2             Nullable(Float32),
-    skyl3             Nullable(Float32),
-    skyl4             Nullable(Float32),
-    wxcodes           LowCardinality(String),
-    ice_accretion_1hr Nullable(Float32),
-    ice_accretion_3hr Nullable(Float32),
-    ice_accretion_6hr Nullable(Float32),
-    peak_wind_gust    Nullable(Float32),
-    peak_wind_drct    Nullable(Float32),
-    peak_wind_time    Nullable(DateTime('UTC')),
-    feel              Nullable(Float32),
-    metar             String,
-    snowdepth         Nullable(Float32)
+    station           STRING NOT NULL,
+    valid             TIMESTAMP NOT NULL,
+    lon               DOUBLE NOT NULL,
+    lat               DOUBLE NOT NULL,
+    elevation         DOUBLE,
+    tmpf              DOUBLE,
+    dwpf              DOUBLE,
+    relh              DOUBLE,
+    drct              DOUBLE,
+    sknt              DOUBLE,
+    p01i              DOUBLE,
+    alti              DOUBLE,
+    mslp              DOUBLE,
+    vsby              DOUBLE,
+    gust              DOUBLE,
+    skyc1             STRING NOT NULL,
+    skyc2             STRING NOT NULL,
+    skyc3             STRING NOT NULL,
+    skyc4             STRING NOT NULL,
+    skyl1             DOUBLE,
+    skyl2             DOUBLE,
+    skyl3             DOUBLE,
+    skyl4             DOUBLE,
+    wxcodes           STRING NOT NULL,
+    ice_accretion_1hr DOUBLE,
+    ice_accretion_3hr DOUBLE,
+    ice_accretion_6hr DOUBLE,
+    peak_wind_gust    DOUBLE,
+    peak_wind_drct    DOUBLE,
+    peak_wind_time    TIMESTAMP,
+    feel              DOUBLE,
+    metar             STRING NOT NULL,
+    snowdepth         DOUBLE
 )
-ENGINE = ReplacingMergeTree
-PARTITION BY toYYYYMM(valid)
-ORDER BY (station, valid);
+CLUSTER BY (station, valid);
+
+-- Staging for load-weather.sh: the files just loaded, before they are merged
+-- into faa.weather. Empty between loads.
+CREATE TABLE IF NOT EXISTS faa.weather_load LIKE faa.weather;

@@ -14,10 +14,11 @@
 
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  clickhouse-faadata-demo on one EC2 instance: ClickHouse, Prometheus, node_exporter
-  and Grafana, with FAA flight and weather data loaded. Ports 22 (SSH) and 3000
-  (Grafana) are open. Setup and loading take 10 to 15 minutes after the stack is
-  created; follow them in /var/log/faa-setup.log.
+  databricks-faadata-demo on one EC2 instance: Grafana with the FAA dashboards,
+  querying an existing Databricks workspace, and the loader, which can also load
+  the data. Ports 22 (SSH) and 3000 (Grafana) are open. Setup takes about 5
+  minutes after the stack is created, plus any loading; follow it in
+  /var/log/faa-setup.log.
 
 Parameters:
   KeyName:
@@ -25,14 +26,16 @@ Parameters:
     Description: EC2 key pair for SSH as the ubuntu user
   InstanceType:
     Type: String
-    Default: m7i.xlarge
-    AllowedValues: [m7i.large, m7i.xlarge, m7i.2xlarge, m7i.4xlarge, r7i.large, r7i.xlarge, r7i.2xlarge, t3.xlarge, t3.2xlarge]
-    Description: x86_64 instance type; 16 GB of memory or more is recommended
+    Default: m7i.large
+    AllowedValues: [t3.medium, t3.large, t3.xlarge, m7i.large, m7i.xlarge, m7i.2xlarge]
+    Description: >-
+      x86_64 instance type. Grafana alone needs little; the loader converts files
+      on several cores, so loading is faster on a larger instance
   VolumeSize:
     Type: Number
-    Default: 100
-    MinValue: 40
-    Description: Root volume size in GB (the full load needs about 20 GB)
+    Default: 40
+    MinValue: 20
+    Description: Root volume size in GB (the full set of downloaded files is about 5 GB)
   AllowedCidr:
     Type: String
     Default: 0.0.0.0/0
@@ -44,11 +47,33 @@ Parameters:
     NoEcho: true
     MinLength: 4
     Description: Password for Grafana's admin user
+  DatabricksHost:
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9.-]+$
+    Description: Workspace host name, without https://, e.g. dbc-1234abcd-5678.cloud.databricks.com
+  DatabricksToken:
+    Type: String
+    NoEcho: true
+    MinLength: 10
+    Description: >-
+      Personal access token. Kept in an AWS Secrets Manager secret that only the
+      instance can read, and written to the repository's databricks.properties
+  DatabricksWarehouseId:
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9]+$
+    Description: SQL warehouse ID (the last part of its HTTP path, /sql/1.0/warehouses/<id>)
+  DatabricksCatalog:
+    Type: String
+    Default: main
+    AllowedPattern: ^[a-zA-Z0-9_]+$
+    Description: Catalog holding the faa schema (on Free Edition, workspace)
   LoadFrom:
     Type: String
-    Default: 2016-01
+    Default: none
     AllowedPattern: ^(\d{4}-\d{2}|none)$
-    Description: First month of flights to load (YYYY-MM), or "none" to load nothing
+    Description: >-
+      First month of flights to load (YYYY-MM), or "none" to load nothing, for a
+      workspace that has the data already
   LoadTo:
     Type: String
     Default: 2026-07
@@ -56,7 +81,7 @@ Parameters:
     Description: Last month of flights to load (YYYY-MM)
   RepoUrl:
     Type: String
-    Default: https://github.com/srmadscience/clickhouse-faadata-demo.git
+    Default: https://github.com/srmadscience/databricks-faadata-demo.git
     Description: Git repository to install
   RepoBranch:
     Type: String
@@ -126,10 +151,38 @@ Resources:
         - {IpProtocol: tcp, FromPort: 3000, ToPort: 3000, CidrIp: !Ref AllowedCidr, Description: Grafana}
       Tags: [{Key: Name, Value: !Ref AWS::StackName}]
 
+  # The token is kept out of the instance's user data, which anything on the
+  # instance can read: the instance fetches it from here with its own role.
+  TokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: !Sub Databricks personal access token for ${AWS::StackName}
+      SecretString: !Ref DatabricksToken
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: ec2.amazonaws.com}, Action: sts:AssumeRole}
+      Policies:
+        - PolicyName: read-databricks-token
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - {Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: !Ref TokenSecret}
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
   Instance:
     Type: AWS::EC2::Instance
     DependsOn: DefaultRoute
     Properties:
+      IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref ImageId
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -142,7 +195,8 @@ Resources:
       Tags: [{Key: Name, Value: !Ref AWS::StackName}]
       # The repository's scripts/install-server.sh does the work; this clones the
       # repository and runs it. The Grafana password goes through a root-only file
-      # rather than the command line.
+      # rather than the command line, and the token from the secret through the
+      # environment.
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -151,20 +205,25 @@ Resources:
           echo "=== $(date '+%H:%M:%S') Cloning ${RepoUrl} (${RepoBranch})"
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -q && apt-get install -y -q git
-          REPO=/home/ubuntu/clickhouse-faadata-demo
+          snap list aws-cli > /dev/null 2>&1 || snap install aws-cli --classic
+          REPO=/home/ubuntu/databricks-faadata-demo
           [[ -d "$REPO" ]] || sudo -u ubuntu git clone -q "${RepoUrl}" "$REPO"
           sudo -u ubuntu git -C "$REPO" checkout -q "${RepoBranch}"
           install -m 600 /dev/null /root/grafana-password
           cat > /root/grafana-password <<'PASSWORD_EOF'
           ${GrafanaPassword}
           PASSWORD_EOF
+          DATABRICKS_TOKEN=$(/snap/bin/aws secretsmanager get-secret-value --region "${AWS::Region}" \
+            --secret-id "${TokenSecret}" --query SecretString --output text)
+          export DATABRICKS_TOKEN DATABRICKS_HOST="${DatabricksHost}" \
+                 DATABRICKS_WAREHOUSE_ID="${DatabricksWarehouseId}" DATABRICKS_CATALOG="${DatabricksCatalog}"
           GRAFANA_PASSWORD=$(cat /root/grafana-password) APP_USER=ubuntu \
             "$REPO/scripts/install-server.sh" "${LoadFrom}" "${LoadTo}"
           rm -f /root/grafana-password
 
 Outputs:
   GrafanaUrl:
-    Description: Grafana (user admin); dashboards fill in as the data loads
+    Description: Grafana (user admin)
     Value: !Sub http://${Instance.PublicDnsName}:3000
   SshCommand:
     Description: SSH to the instance; setup log in /var/log/faa-setup.log

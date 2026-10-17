@@ -43,8 +43,11 @@ data/**
 *.tsv
 
 # Local credentials
-clickhouse.properties
+databricks.properties
 .env
 
 # Load timings, appended by scripts/reproduce.sh --time
 !/testresults_load.csv
+
+# Python
+__pycache__/

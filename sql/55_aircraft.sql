@@ -34,14 +34,21 @@ SELECT
 FROM
 (
     SELECT tail, 1 AS registered, serial_number, mfr_mdl_code, year_mfr, registrant,
-           air_worth_date, CAST(NULL AS Nullable(Date32)) AS cancel_date
+           air_worth_date, CAST(NULL AS DATE) AS cancel_date
     FROM faa.registry_master
     UNION ALL
-    SELECT tail, 0 AS registered, serial_number, mfr_mdl_code, year_mfr, registrant,
-           air_worth_date, cancel_date
-    FROM faa.registry_dereg
-    WHERE tail NOT IN (SELECT tail FROM faa.registry_master)
-    ORDER BY cancel_date DESC
-    LIMIT 1 BY tail
+    -- An N-number deregistered more than once can have several records with
+    -- the same cancel date (or none): the most recent action decides, then the
+    -- serial number, so the choice is the same every time.
+    SELECT tail, registered, serial_number, mfr_mdl_code, year_mfr, registrant, air_worth_date, cancel_date
+    FROM (
+        SELECT tail, 0 AS registered, serial_number, mfr_mdl_code, year_mfr, registrant,
+               air_worth_date, cancel_date, last_action_date
+        FROM faa.registry_dereg
+        WHERE tail NOT IN (SELECT tail FROM faa.registry_master)
+        QUALIFY row_number() OVER (PARTITION BY tail
+                                   ORDER BY cancel_date DESC NULLS LAST, last_action_date DESC NULLS LAST,
+                                            serial_number) = 1
+    )
 ) AS r
 LEFT JOIN faa.registry_models AS m ON m.code = r.mfr_mdl_code;

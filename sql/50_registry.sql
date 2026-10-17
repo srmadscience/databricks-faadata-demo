@@ -21,61 +21,57 @@
 -- Currently registered aircraft (MASTER.txt).
 CREATE TABLE IF NOT EXISTS faa.registry_master
 (
-    tail             String,                  -- registration incl. "N" prefix, e.g. N101DQ
-    serial_number    String,
-    mfr_mdl_code     LowCardinality(String),  -- joins faa.registry_models.code
-    eng_mfr_mdl      LowCardinality(String),
-    year_mfr         Nullable(UInt16),
-    type_registrant  LowCardinality(String),  -- 1 individual, 2 partnership, 3 corporation, 4 co-owned,
+    tail             STRING NOT NULL,         -- registration incl. "N" prefix, e.g. N101DQ
+    serial_number    STRING NOT NULL,
+    mfr_mdl_code     STRING NOT NULL,         -- joins faa.registry_models.code
+    eng_mfr_mdl      STRING NOT NULL,
+    year_mfr         INT,
+    type_registrant  STRING NOT NULL,         -- 1 individual, 2 partnership, 3 corporation, 4 co-owned,
                                               -- 5 government, 7 LLC, 8 non-citizen corp, 9 non-citizen co-owned
-    registrant       String,                  -- owner name; '' for individuals and co-owners
-    certification    LowCardinality(String),
-    type_aircraft    LowCardinality(String),
-    type_engine      LowCardinality(String),
-    status_code      LowCardinality(String),
-    mode_s_code_hex  String,
-    air_worth_date   Nullable(Date32),
-    cert_issue_date  Nullable(Date32),
-    last_action_date Nullable(Date32),
-    expiration_date  Nullable(Date32)
+    registrant       STRING NOT NULL,         -- owner name; '' for individuals and co-owners
+    certification    STRING NOT NULL,
+    type_aircraft    STRING NOT NULL,
+    type_engine      STRING NOT NULL,
+    status_code      STRING NOT NULL,
+    mode_s_code_hex  STRING NOT NULL,
+    air_worth_date   DATE,
+    cert_issue_date  DATE,
+    last_action_date DATE,
+    expiration_date  DATE
 )
-ENGINE = MergeTree
-ORDER BY tail;
+CLUSTER BY (tail);
 
 -- Deregistered aircraft (DEREG.txt): retired, exported or re-registered.
 -- An N-number can be deregistered more than once over the years.
 CREATE TABLE IF NOT EXISTS faa.registry_dereg
 (
-    tail             String,
-    serial_number    String,
-    mfr_mdl_code     LowCardinality(String),
-    eng_mfr_mdl      LowCardinality(String),
-    year_mfr         Nullable(UInt16),
-    status_code      LowCardinality(String),
-    registrant       String,                  -- '' unless an organisation (see faa.registry_master)
-    certification    LowCardinality(String),
-    air_worth_date   Nullable(Date32),
-    cancel_date      Nullable(Date32),
-    last_action_date Nullable(Date32),
-    mode_s_code_hex  String
+    tail             STRING NOT NULL,
+    serial_number    STRING NOT NULL,
+    mfr_mdl_code     STRING NOT NULL,
+    eng_mfr_mdl      STRING NOT NULL,
+    year_mfr         INT,
+    status_code      STRING NOT NULL,
+    registrant       STRING NOT NULL,         -- '' unless an organisation (see faa.registry_master)
+    certification    STRING NOT NULL,
+    air_worth_date   DATE,
+    cancel_date      DATE,
+    last_action_date DATE,
+    mode_s_code_hex  STRING NOT NULL
 )
-ENGINE = MergeTree
-ORDER BY (tail, cancel_date)
-SETTINGS allow_nullable_key = 1;
+CLUSTER BY (tail);
 
 -- Aircraft make/model reference (ACFTREF.txt).
 CREATE TABLE IF NOT EXISTS faa.registry_models
 (
-    code            String,
-    manufacturer    LowCardinality(String),
-    model           LowCardinality(String),
-    type_aircraft   LowCardinality(String),   -- 4 fixed-wing single-engine, 5 fixed-wing multi-engine, ...
-    type_engine     LowCardinality(String),   -- 4 turbo-fan, 5 turbo-jet, 2 turbo-prop, ...
-    category        LowCardinality(String),
-    engines         Nullable(UInt8),
-    seats           Nullable(UInt16),
-    weight_class    LowCardinality(String),
-    cruise_speed    Nullable(UInt16)
+    code            STRING NOT NULL,
+    manufacturer    STRING NOT NULL,
+    model           STRING NOT NULL,
+    type_aircraft   STRING NOT NULL,          -- 4 fixed-wing single-engine, 5 fixed-wing multi-engine, ...
+    type_engine     STRING NOT NULL,          -- 4 turbo-fan, 5 turbo-jet, 2 turbo-prop, ...
+    category        STRING NOT NULL,
+    engines         INT,
+    seats           INT,
+    weight_class    STRING NOT NULL,
+    cruise_speed    INT
 )
-ENGINE = MergeTree
-ORDER BY code;
+CLUSTER BY (code);

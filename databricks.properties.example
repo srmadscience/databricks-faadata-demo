@@ -1,0 +1,23 @@
+# Copy to databricks.properties (git-ignored) and fill in.
+# Environment variables DATABRICKS_HOST / _TOKEN / _WAREHOUSE_ID / _CATALOG override these.
+
+# Workspace host name, as in the browser's address bar, without https://.
+databricks.host=dbc-xxxxxxxx-xxxx.cloud.databricks.com
+# Personal access token: Settings > Developer > Access tokens > Generate new token.
+databricks.token=
+# SQL warehouse: SQL Warehouses > (warehouse) > Connection details. The ID, or
+# the whole HTTP path (/sql/1.0/warehouses/<id>).
+databricks.warehouse_id=
+# Catalog to create the faa schema in (default main). You need CREATE SCHEMA
+# on it. Free Edition has no main: use workspace, its default catalog.
+databricks.catalog=main
+
+# Grafana, for scripts/grafana-provision.sh only (environment variables
+# GRAFANA_SSH / GRAFANA_URL override these). Grafana connects to the same
+# workspace, warehouse and catalog as above, with the same token.
+# SSH login on the Grafana server: key-based, with passwordless sudo; or
+# "local" for a Grafana on this machine (run as a user with sudo).
+#grafana.ssh=user@grafana-host
+# Grafana's web address, for the dashboard links printed at the end.
+# Default: http://<host from grafana.ssh>:3000
+#grafana.url=http://grafana-host:3000

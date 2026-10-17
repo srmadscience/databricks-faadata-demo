@@ -18,16 +18,16 @@
 -- faa.airport_station resolves. tzname converts BTS local times to UTC.
 CREATE TABLE IF NOT EXISTS faa.stations
 (
-    station   LowCardinality(String),
-    network   LowCardinality(String),
-    name      String,
-    state     LowCardinality(String),
-    country   LowCardinality(String),
-    lat       Float64,
-    lon       Float64,
-    elevation Nullable(Float32),
-    tzname    LowCardinality(String),
-    archive_begin Nullable(Date32)
+    station   STRING NOT NULL,
+    network   STRING NOT NULL,
+    name      STRING NOT NULL,
+    state     STRING NOT NULL,
+    country   STRING NOT NULL,
+    lat       DOUBLE NOT NULL,
+    lon       DOUBLE NOT NULL,
+    elevation DOUBLE,
+    tzname    STRING NOT NULL,
+    archive_begin DATE
 )
-ENGINE = ReplacingMergeTree
-ORDER BY station;
+-- Replaced whole by load-stations.sh.
+CLUSTER BY (station);

@@ -16,15 +16,34 @@
   "templating": {
     "list": [
       {
+        "name": "catalog",
+        "label": "Catalog",
+        "type": "constant",
+        "hide": 2,
+        "query": "main",
+        "current": {
+          "text": "main",
+          "value": "main"
+        },
+        "options": [
+          {
+            "text": "main",
+            "value": "main",
+            "selected": true
+          }
+        ],
+        "description": "The Unity Catalog catalog holding the faa schema. scripts/grafana-provision.sh sets it from databricks.catalog."
+      },
+      {
         "name": "airline",
         "label": "Airline",
         "type": "query",
         "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "clickhouse-faa"
+          "type": "mullerpeter-databricks-datasource",
+          "uid": "databricks-faa"
         },
-        "query": "SELECT DISTINCT Reporting_Airline FROM faa.ontime ORDER BY 1",
-        "definition": "SELECT DISTINCT Reporting_Airline FROM faa.ontime ORDER BY 1",
+        "query": "SELECT DISTINCT Reporting_Airline FROM ${catalog}.faa.ontime ORDER BY 1",
+        "definition": "SELECT DISTINCT Reporting_Airline FROM ${catalog}.faa.ontime ORDER BY 1",
         "refresh": 1,
         "multi": true,
         "includeAll": true,
@@ -45,11 +64,11 @@
         "label": "Origin airport",
         "type": "query",
         "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "clickhouse-faa"
+          "type": "mullerpeter-databricks-datasource",
+          "uid": "databricks-faa"
         },
-        "query": "SELECT DISTINCT Origin FROM faa.ontime ORDER BY 1",
-        "definition": "SELECT DISTINCT Origin FROM faa.ontime ORDER BY 1",
+        "query": "SELECT DISTINCT Origin FROM ${catalog}.faa.ontime ORDER BY 1",
+        "definition": "SELECT DISTINCT Origin FROM ${catalog}.faa.ontime ORDER BY 1",
         "refresh": 1,
         "multi": true,
         "includeAll": true,
@@ -114,8 +133,8 @@
       "title": "Flights",
       "description": "Scheduled flights in range.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 0,
@@ -127,13 +146,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT count() AS flights FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS flights FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
         }
       ],
       "fieldConfig": {
@@ -175,8 +194,8 @@
       "title": "On-time arrivals",
       "description": "Arrived less than 15 minutes late, as a share of flights that completed (DOT definition).",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 4,
@@ -188,13 +207,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT 100 * countIf(ArrDel15 = 0) / countIf(Cancelled = 0 AND Diverted = 0) AS on_time\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT try_divide(100 * count_if(ArrDel15 = 0), count_if(Cancelled = 0 AND Diverted = 0)) AS on_time\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
         }
       ],
       "fieldConfig": {
@@ -244,8 +263,8 @@
       "title": "Avg arrival delay",
       "description": "Mean arrival delay of completed flights; early arrivals count as negative.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 8,
@@ -257,13 +276,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT avg(ArrDelay) AS delay FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT avg(ArrDelay) AS delay FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
         }
       ],
       "fieldConfig": {
@@ -305,8 +324,8 @@
       "title": "Avg delay if late",
       "description": "Mean arrival delay of flights that arrived 15+ minutes late.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 12,
@@ -318,13 +337,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT avgIf(ArrDelay, ArrDel15 = 1) AS delay FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT avg(if(ArrDel15 = 1, ArrDelay, NULL)) AS delay FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
         }
       ],
       "fieldConfig": {
@@ -366,8 +385,8 @@
       "title": "Cancelled",
       "description": "Share of scheduled flights cancelled.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 16,
@@ -379,13 +398,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT 100 * avg(Cancelled) AS cancelled FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT 100 * avg(Cancelled) AS cancelled FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
         }
       ],
       "fieldConfig": {
@@ -435,8 +454,8 @@
       "title": "Diverted",
       "description": "Share of scheduled flights diverted.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 20,
@@ -448,13 +467,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT 100 * avg(Diverted) AS diverted FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT 100 * avg(Diverted) AS diverted FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})"
         }
       ],
       "fieldConfig": {
@@ -496,8 +515,8 @@
       "title": "Average delay by day",
       "description": "Mean delay in minutes per day (local date of departure). Negative = early.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 0,
@@ -509,13 +528,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT toDateTime(FlightDate) AS time,\n       avg(DepDelay) AS `Departure delay`,\n       avg(ArrDelay) AS `Arrival delay`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY time ORDER BY time"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(FlightDate AS TIMESTAMP) AS time,\n       avg(DepDelay) AS `Departure delay`,\n       avg(ArrDelay) AS `Arrival delay`\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY 1 ORDER BY 1"
         }
       ],
       "fieldConfig": {
@@ -546,8 +565,8 @@
       "title": "Late and cancelled flights by day",
       "description": "Share of each day's scheduled flights.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 12,
@@ -559,13 +578,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT toDateTime(FlightDate) AS time,\n       100 * countIf(DepDel15 = 1) / count() AS `Departed 15+ min late`,\n       100 * countIf(ArrDel15 = 1) / count() AS `Arrived 15+ min late`,\n       100 * avg(Cancelled) AS `Cancelled`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY time ORDER BY time"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(FlightDate AS TIMESTAMP) AS time,\n       100 * count_if(DepDel15 = 1) / count(*) AS `Departed 15+ min late`,\n       100 * count_if(ArrDel15 = 1) / count(*) AS `Arrived 15+ min late`,\n       100 * avg(Cancelled) AS `Cancelled`\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY 1 ORDER BY 1"
         }
       ],
       "fieldConfig": {
@@ -612,8 +631,8 @@
       "title": "Delay minutes by cause, per month",
       "description": "Total delay minutes attributed to each cause (reported for flights arriving 15+ min late). Note most weather delay is booked under NAS, not 'Extreme weather'.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 0,
@@ -625,13 +644,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT toDateTime(toStartOfMonth(FlightDate)) AS time,\n       sum(CarrierDelay) AS Carrier,\n       sum(LateAircraftDelay) AS `Late aircraft`,\n       sum(NASDelay) AS `Air traffic system (NAS)`,\n       sum(WeatherDelay) AS `Extreme weather`,\n       sum(SecurityDelay) AS Security\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY time ORDER BY time"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(trunc(FlightDate, 'MM') AS TIMESTAMP) AS time,\n       sum(CarrierDelay) AS Carrier,\n       sum(LateAircraftDelay) AS `Late aircraft`,\n       sum(NASDelay) AS `Air traffic system (NAS)`,\n       sum(WeatherDelay) AS `Extreme weather`,\n       sum(SecurityDelay) AS Security\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY 1 ORDER BY 1"
         }
       ],
       "fieldConfig": {
@@ -668,8 +687,8 @@
       "title": "Airlines",
       "description": "Reporting carriers by on-time arrival rate. Codes are BTS carrier codes (AA American, DL Delta, UA United, WN Southwest, B6 JetBlue, AS Alaska, NK Spirit, F9 Frontier, ...).",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 12,
@@ -681,13 +700,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT Reporting_Airline AS Airline,\n       count() AS Flights,\n       round(100 * countIf(ArrDel15 = 0) / countIf(Cancelled = 0 AND Diverted = 0), 1) AS `On time %`,\n       round(avg(ArrDelay), 1) AS `Avg arr delay`,\n       round(100 * avg(Cancelled), 2) AS `Cancelled %`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY Airline ORDER BY `On time %` DESC"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT Reporting_Airline AS Airline,\n       count(*) AS Flights,\n       round(try_divide(100 * count_if(ArrDel15 = 0), count_if(Cancelled = 0 AND Diverted = 0)), 1) AS `On time %`,\n       round(avg(ArrDelay), 1) AS `Avg arr delay`,\n       round(100 * avg(Cancelled), 2) AS `Cancelled %`\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY Reporting_Airline ORDER BY `On time %` DESC"
         }
       ],
       "fieldConfig": {
@@ -735,8 +754,8 @@
       "title": "Departure delay by scheduled hour",
       "description": "By scheduled local departure hour. Delays build up through the day as late aircraft knock on.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 0,
@@ -748,13 +767,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT lpad(toString(intDiv(CRSDepTime, 100) % 24), 2, '0') AS hour,\n       round(avg(DepDelay), 1) AS `Avg departure delay`,\n       round(100 * countIf(DepDel15 = 1) / count(), 1) AS `% departing 15+ min late`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY hour ORDER BY hour"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT lpad(CAST(CRSDepTime DIV 100 % 24 AS STRING), 2, '0') AS hour,\n       round(avg(DepDelay), 1) AS `Avg departure delay`,\n       round(100 * count_if(DepDel15 = 1) / count(*), 1) AS `% departing 15+ min late`\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY 1 ORDER BY 1"
         }
       ],
       "fieldConfig": {
@@ -813,8 +832,8 @@
       "title": "Departure delay by day of week",
       "description": "",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 12,
@@ -826,13 +845,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT DayOfWeek AS dow,\n       ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][DayOfWeek] AS day,\n       round(avg(DepDelay), 1) AS `Avg departure delay`,\n       round(100 * countIf(DepDel15 = 1) / count(), 1) AS `% departing 15+ min late`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY dow, day ORDER BY dow"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT DayOfWeek AS dow,\n       element_at(array('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'), DayOfWeek) AS day,\n       round(avg(DepDelay), 1) AS `Avg departure delay`,\n       round(100 * count_if(DepDel15 = 1) / count(*), 1) AS `% departing 15+ min late`\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY DayOfWeek ORDER BY DayOfWeek"
         }
       ],
       "fieldConfig": {
@@ -907,8 +926,8 @@
       "title": "Average departure delay by airport",
       "description": "Colour = mean departure delay (minutes). Airports with 100+ departures; hover for details.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 0,
@@ -920,13 +939,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT a.airport AS airport, any(a.airport_name) AS name, any(a.lat) AS lat, any(a.lon) AS lon,\n       toFloat64(count()) AS flights, round(avg(o.DepDelay), 1) AS avg_dep_delay\nFROM faa.ontime AS o\nINNER JOIN faa.airport_station AS a ON a.airport = o.Origin\nWHERE $__dateFilter(o.FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY airport HAVING flights >= 100"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT a.airport AS airport, any_value(a.airport_name) AS name, any_value(a.lat) AS lat, any_value(a.lon) AS lon,\n       CAST(count(*) AS DOUBLE) AS flights, round(avg(o.DepDelay), 1) AS avg_dep_delay\nFROM ${catalog}.faa.ontime AS o\nINNER JOIN ${catalog}.faa.airport_station AS a ON a.airport = o.Origin\nWHERE o.FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND o.Reporting_Airline IN (${airline:singlequote}) AND o.Origin IN (${origin:singlequote})\nGROUP BY a.airport HAVING count(*) >= 100"
         }
       ],
       "fieldConfig": {
@@ -994,8 +1013,8 @@
       "title": "Most delayed airports",
       "description": "Airports with 1,000+ departures in range, worst first.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 12,
@@ -1007,13 +1026,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "queryType": "table",
-          "format": 1,
-          "rawSql": "SELECT Origin AS Airport, any(OriginCityName) AS City, count() AS Departures,\n       round(100 * countIf(DepDel15 = 1) / countIf(Cancelled = 0), 1) AS `Late departures %`,\n       round(avg(DepDelay), 1) AS `Avg dep delay`,\n       round(100 * avg(Cancelled), 2) AS `Cancelled %`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY Airport HAVING Departures >= 1000\nORDER BY `Late departures %` DESC LIMIT 50"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT Origin AS Airport, any_value(OriginCityName) AS City, count(*) AS Departures,\n       round(try_divide(100 * count_if(DepDel15 = 1), count_if(Cancelled = 0)), 1) AS `Late departures %`,\n       round(avg(DepDelay), 1) AS `Avg dep delay`,\n       round(100 * avg(Cancelled), 2) AS `Cancelled %`\nFROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY Origin HAVING count(*) >= 1000\nORDER BY `Late departures %` DESC LIMIT 50"
         }
       ],
       "fieldConfig": {
@@ -1061,8 +1080,8 @@
       "title": "Top 10 least reliable city pairs",
       "description": "Airport pairs, both directions together, with the most carrier cancellations (code A) per 1,000 flights, among pairs with at least the minimum number of completed flights; ties go to the pair with more carrier delay per flight. The Origin airport filter applies to where each flight left from.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 0,
@@ -1118,13 +1137,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table",
-          "rawSql": "SELECT concat(least(Origin, Dest), '–', greatest(Origin, Dest)) AS `City pair`,\n       round(1000 * countIf(Cancelled = 1 AND CancellationCode = 'A') / count(), 1) AS `Carrier cxl / 1k flights`,\n       round(sum(CarrierDelay) / countIf(Cancelled = 0), 1) AS delay,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       -- city names from one flight of the pair, ordered like the airport codes\n       any((Origin, OriginCityName, DestCityName)) AS one_flight,\n       if(startsWith(`City pair`, one_flight.1), concat(one_flight.2, ' – ', one_flight.3), concat(one_flight.3, ' – ', one_flight.2)) AS Cities,\n       toString(count()) AS Flights, toString(delay) AS `Carrier delay min/flt`\nFROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY `City pair` HAVING countIf(Cancelled = 0) >= ${min_flights}\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC\nLIMIT 10"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT `City pair`, `Carrier cxl / 1k flights`, delay,\n       -- city names from one flight of the pair, ordered like the airport codes\n       if(one_flight.Origin < one_flight.Dest, concat(one_flight.OriginCityName, ' – ', one_flight.DestCityName),\n          concat(one_flight.DestCityName, ' – ', one_flight.OriginCityName)) AS Cities,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       CAST(flights AS STRING) AS Flights, CAST(delay AS STRING) AS `Carrier delay min/flt`\nFROM (\n    SELECT concat(least(Origin, Dest), '–', greatest(Origin, Dest)) AS `City pair`,\n           round(try_divide(1000 * count_if(Cancelled = 1 AND CancellationCode = 'A'), count(*)), 1) AS `Carrier cxl / 1k flights`,\n           round(try_divide(sum(CarrierDelay), count_if(Cancelled = 0)), 1) AS delay,\n           any_value(struct(Origin, Dest, OriginCityName, DestCityName)) AS one_flight,\n           count(*) AS flights\n    FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\n    GROUP BY 1 HAVING count_if(Cancelled = 0) >= ${min_flights}\n    ORDER BY `Carrier cxl / 1k flights` DESC, delay DESC\n    LIMIT 10\n)\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC"
         }
       ],
       "id": 15
@@ -1134,8 +1153,8 @@
       "title": "Top 10 least reliable flight numbers",
       "description": "Flight numbers with the most carrier cancellations (code A) per 1,000 flights, among those with at least the minimum number of completed flights; ties go to the one with more carrier delay per flight. Airlines reuse a number on several routes over time: the label shows the route it flew most, and the tooltip how many it flew.",
       "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse-faa"
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
       },
       "gridPos": {
         "x": 12,
@@ -1191,13 +1210,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "clickhouse-faa"
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "table",
-          "rawSql": "-- Rank first, then find the main route of just the ten flights ranked.\nWITH top AS (\n    SELECT Reporting_Airline AS airline, Flight_Number_Reporting_Airline AS number, count() AS flights,\n           round(1000 * countIf(Cancelled = 1 AND CancellationCode = 'A') / flights, 1) AS cxl,\n           round(sum(CarrierDelay) / countIf(Cancelled = 0), 1) AS carrier_delay\n    FROM faa.ontime WHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\n    GROUP BY airline, number HAVING countIf(Cancelled = 0) >= ${min_flights}\n    ORDER BY cxl DESC, carrier_delay DESC\n    LIMIT 10\n)\nSELECT concat(airline, ' ', toString(number), ' (', topK(1)(concat(Origin, '–', Dest))[1], ')') AS Flight,\n       any(cxl) AS `Carrier cxl / 1k flights`, any(carrier_delay) AS delay,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       toString(uniqExact(Origin, Dest)) AS Routes,\n       toString(any(flights)) AS Flights, toString(delay) AS `Carrier delay min/flt`\nFROM faa.ontime INNER JOIN top ON Reporting_Airline = airline AND Flight_Number_Reporting_Airline = number\nWHERE $__dateFilter(FlightDate) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY airline, number\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Rank first, then find the main route of just the ten flights ranked.\nWITH top AS (\n    SELECT Reporting_Airline AS airline, Flight_Number_Reporting_Airline AS number, count(*) AS n_flights,\n           round(try_divide(1000 * count_if(Cancelled = 1 AND CancellationCode = 'A'), count(*)), 1) AS cxl,\n           round(try_divide(sum(CarrierDelay), count_if(Cancelled = 0)), 1) AS carrier_delay\n    FROM ${catalog}.faa.ontime WHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\n    GROUP BY 1, 2 HAVING count_if(Cancelled = 0) >= ${min_flights}\n    ORDER BY cxl DESC, carrier_delay DESC\n    LIMIT 10\n)\nSELECT concat(airline, ' ', CAST(number AS STRING), ' (', mode(concat(Origin, '–', Dest)), ')') AS Flight,\n       any_value(cxl) AS `Carrier cxl / 1k flights`, any_value(carrier_delay) AS delay,\n       -- as text, so they appear in the tooltip without being drawn as bars\n       CAST(count(DISTINCT Origin, Dest) AS STRING) AS Routes,\n       CAST(any_value(n_flights) AS STRING) AS Flights, CAST(any_value(carrier_delay) AS STRING) AS `Carrier delay min/flt`\nFROM ${catalog}.faa.ontime INNER JOIN top ON Reporting_Airline = airline AND Flight_Number_Reporting_Airline = number\nWHERE FlightDate BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Reporting_Airline IN (${airline:singlequote}) AND Origin IN (${origin:singlequote})\nGROUP BY airline, number\nORDER BY `Carrier cxl / 1k flights` DESC, delay DESC"
         }
       ],
       "id": 16

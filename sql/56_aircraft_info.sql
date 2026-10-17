@@ -14,18 +14,15 @@
 
 -- Snapshot of the faa.aircraft view, refreshed by load-registry.sh after it
 -- replaces the registry tables. Dashboards join this small table rather than
--- the view, which re-runs its UNION and join on every query. (A ClickHouse
--- dictionary would be faster still, but its CLICKHOUSE source must log in and
--- would need the password written into its definition.)
+-- the view, which re-runs its UNION and join on every query.
 CREATE TABLE IF NOT EXISTS faa.aircraft_info
 (
-    tail       String,
-    registered UInt8,
-    make_model LowCardinality(String),
-    year_mfr   Nullable(UInt16),
-    seats      Nullable(UInt16),
-    registrant String,
-    cancel_date Nullable(Date32)
+    tail       STRING NOT NULL,
+    registered INT NOT NULL,
+    make_model STRING,           -- NULL if the model code is not in faa.registry_models
+    year_mfr   INT,
+    seats      INT,
+    registrant STRING NOT NULL,
+    cancel_date DATE
 )
-ENGINE = MergeTree
-ORDER BY tail;
+CLUSTER BY (tail);

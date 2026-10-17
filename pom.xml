@@ -21,27 +21,28 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>ie.rolfe</groupId>
-    <artifactId>clickhouse-faadata-demo</artifactId>
+    <artifactId>databricks-faadata-demo</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>clickhouse-faadata-demo</name>
-    <description>Loads FAA flight and weather data into ClickHouse for analysis in Grafana</description>
+    <name>databricks-faadata-demo</name>
+    <description>Loads FAA flight and weather data into Databricks for analysis in Grafana</description>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <clickhouse.version>0.10.0</clickhouse.version>
+        <databricks-jdbc.version>3.4.3</databricks-jdbc.version>
         <slf4j.version>2.0.16</slf4j.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
     <dependencies>
-        <!-- ClickHouse Java client (v2): HTTP protocol, streaming inserts -->
+        <!-- Databricks JDBC driver (open source): SQL on a SQL warehouse. File
+             uploads to a Unity Catalog volume use java.net.http directly. -->
         <dependency>
-            <groupId>com.clickhouse</groupId>
-            <artifactId>client-v2</artifactId>
-            <version>${clickhouse.version}</version>
+            <groupId>com.databricks</groupId>
+            <artifactId>databricks-jdbc</artifactId>
+            <version>${databricks-jdbc.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -70,8 +71,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
             </plugin>
-            <!-- Builds target/clickhouse-faadata-demo-<ver>-all.jar so the loader can be
-                 copied to another machine (e.g. the ClickHouse server) and run next to the data. -->
+            <!-- Builds target/databricks-faadata-demo-<ver>-all.jar, which the scripts
+                 run, and which can be copied to another machine with the data. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -87,6 +88,11 @@
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>ie.rolfe.faadata.Loader</mainClass>
+                                    <!-- The driver reads results with Apache Arrow, which
+                                         needs java.nio opened to it on Java 16 and later. -->
+                                    <manifestEntries>
+                                        <Add-Opens>java.base/java.nio</Add-Opens>
+                                    </manifestEntries>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>

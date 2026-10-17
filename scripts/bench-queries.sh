@@ -28,7 +28,7 @@
 #   --seed N       repeat an earlier run's queries
 #   --log FILE     one line per query: latency, rows, aircraft and dates
 # --time COMMENT appends a summary to testresults_query.csv, with the date, git
-# commit, ClickHouse version and COMMENT, which says what changed since the
+# commit, Databricks SQL version and COMMENT, which says what changed since the
 # last test.
 #
 # Workloads:

@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Publishes data/raw/ as GitHub Releases on $DATA_REPO (this repository by
-# default): the public mirror that the fetch scripts try before the original
-# sources. Uploads only files that are new or have changed, comparing SHA-256s
+# Publishes data/raw/ as GitHub Releases on $DATA_REPO (by default
+# srmadscience/clickhouse-faadata-demo, whose mirror this project shares, as
+# both load the same files; see lib.sh): the public mirror that the fetch
+# scripts try before the original sources. Uploads only files that are new or have changed, comparing SHA-256s
 # with what each release already holds, so re-run it after fetching more data.
 # Needs the gh CLI, logged in with write access to the repository.
 #

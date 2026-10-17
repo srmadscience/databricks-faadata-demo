@@ -21,9 +21,9 @@
 #   scripts/reproduce.sh --time "parallel downloads" 2016-01 2026-07
 #
 # --time COMMENT appends each step's duration, and the total, to
-# testresults_load.csv, with the date, git commit, ClickHouse version and
+# testresults_load.csv, with the date, git commit, Databricks SQL version and
 # COMMENT, which says what changed since the last test. For a full-load test,
-# start from an empty server (DROP DATABASE faa) and an empty data/raw/.
+# start from an empty schema (DROP SCHEMA faa CASCADE) and an empty data/raw/.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -37,12 +37,12 @@ fi
 if [[ $time -eq 1 ]]; then
   source ./lib.sh
   RESULTS="$PROJECT_DIR/testresults_load.csv"
-  [[ -f "$RESULTS" ]] || echo "run_start,git_commit,clickhouse_version,from,to,step,seconds,comment" > "$RESULTS"
+  [[ -f "$RESULTS" ]] || echo "run_start,git_commit,server,from,to,step,seconds,comment" > "$RESULTS"
   comment="\"${comment//\"/\"\"}\""   # CSV-quoted
   run_start=$(date '+%Y-%m-%dT%H:%M:%S%z')
   commit=$(git -C "$PROJECT_DIR" rev-parse --short HEAD)
   [[ -z "$(git -C "$PROJECT_DIR" status --porcelain -- . ":!testresults_load.csv")" ]] || commit+="-dirty"
-  version=$(ch_query 'SELECT version()')
+  version="Databricks SQL $(dbx_version)"
 fi
 
 # step SCRIPT [ARGS...]: runs one step, recording its duration with --time.

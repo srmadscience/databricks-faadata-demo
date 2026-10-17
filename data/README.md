@@ -3,8 +3,8 @@
 Everything here except this README, `manifest.sha256` and the `.gitkeep`
 placeholders is git-ignored. **Never commit data files.** The scripts in
 `scripts/` are the record of where the data comes from; re-running them
-re-creates this directory, from the project's GitHub Releases mirror where it
-has the files and from the original sources otherwise (see the main README).
+re-creates this directory, from the GitHub Releases mirror (shared with
+clickhouse-faadata-demo) where it has the files and from the original sources otherwise (see the main README).
 `publish/` holds the archives `scripts/publish-data.sh` builds for the mirror.
 
 | Path | Source | Fetched by |
@@ -17,6 +17,10 @@ has the files and from the original sources otherwise (see the main README).
 
 Rough sizes: flights ~30 MB zipped (~600k rows) per month; weather ~0.4 MB
 gzipped (~10k rows) per airport per year, ~350 airports a year.
+
+`raw/<kind>/` may hold symbolic links to another copy of the files, e.g. a
+clone of clickhouse-faadata-demo: the scripts and the loader follow them, and
+new downloads are added next to them.
 
 To pin down exactly what was loaded:
 

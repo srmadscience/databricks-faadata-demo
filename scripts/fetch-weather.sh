@@ -33,7 +33,7 @@ refresh=0
 [[ $# -ge 2 ]] || { echo "usage: $0 [--refresh] FROM_YEAR TO_YEAR [STATION...]" >&2; exit 1; }
 from=$1; to=$2; shift 2
 given=("$@")
-[[ ${#given[@]} -gt 0 ]] || ch_check_connection
+[[ ${#given[@]} -gt 0 ]] || dbx_check_connection
 
 DEST="$PROJECT_DIR/data/raw/weather"
 MIRROR=""
@@ -58,11 +58,11 @@ for year in $(seq "$from" "$to"); do
   if [[ ${#given[@]} -gt 0 ]]; then
     stations=("${given[@]}")
   else
-    stations=($(ch_query "
+    stations=($(dbx_values "
       SELECT DISTINCT station FROM faa.airport_station
-      WHERE airport IN (SELECT Origin FROM faa.ontime WHERE toYear(FlightDate) = $year
-                        UNION DISTINCT
-                        SELECT Dest FROM faa.ontime WHERE toYear(FlightDate) = $year)
+      WHERE airport IN (SELECT Origin FROM faa.ontime WHERE year(FlightDate) = $year
+                        UNION
+                        SELECT Dest FROM faa.ontime WHERE year(FlightDate) = $year)
       ORDER BY station"))
   fi
   echo "$year: ${#stations[@]} stations needed"
