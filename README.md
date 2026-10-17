@@ -269,7 +269,10 @@ in the time range.
 ### Screenshots
 
 Taken from Grafana 13.2 with the community Databricks plugin, on the ten years loaded into a
-Free Edition workspace.
+Free Edition workspace. To retake them all after changing a dashboard (needs Node.js and
+Google Chrome; `GRAFANA_URL` defaults to `grafana.url`):
+
+    GRAFANA_PASSWORD=secret scripts/screenshots.sh
 
 **Flight Delays**, February to July 2026: headline figures, delays and cancellations by
 day, delay causes by month and the airline table (top, above); further down, the airport
