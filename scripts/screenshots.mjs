@@ -96,14 +96,8 @@ async function takeScreenshot(name, uid, vars, target) {
   // as panels above may have changed height as they loaded.
   for (let pass = 0; pass < 2; pass++) {
     if (target === 'bottom') {
-      await page.evaluate(() => {
-        for (const el of document.querySelectorAll('*')) {
-          if (el.scrollHeight > el.clientHeight + 50 && getComputedStyle(el).overflowY.match(/auto|scroll/)) {
-            el.scrollTop = el.scrollHeight;
-          }
-        }
-        window.scrollTo(0, document.body.scrollHeight);
-      });
+      // the page only: tables in panels keep showing their first rows
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     } else if (target) {
       const el = page.getByText(target, { exact: true }).first();
       await el.evaluate((e) => {
