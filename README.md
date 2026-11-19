@@ -15,6 +15,12 @@ Developed with Databricks SQL 2026.39 (Free Edition, serverless) and Grafana 13.
 
 ![Flight Delays dashboard, February to July 2026](docs/screenshots/flight-delays.jpg)
 
+## See Also:
+
+* [bigquery-faadata-demo](https://github.com/srmadscience/bigquery-faadata-demo) Google BigQuery port
+* [clickhouse-faadata-demo](https://github.com/srmadscience/clickhouse-faadata-demo) The original ClickHouse version
+* [snowflake-faadata-demo](https://github.com/srmadscience/snowflake-faadata-demo) Snowflake port
+
 ## Data
 
 | Table | Source | Grain |
