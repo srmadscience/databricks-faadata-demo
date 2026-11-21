@@ -1,0 +1,1272 @@
+{
+  "uid": "faa-leased-aircraft",
+  "title": "Leased Aircraft",
+  "description": "Leased aircraft from 2025 on, from leased_plans_summary (one row per tail number per month, built by the Matillion job in matillion/): utilisation, cancellations and delays by model, age and aircraft.",
+  "tags": [
+    "faa",
+    "flights",
+    "aircraft",
+    "leased"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "2025-01-01T00:00:00.000Z",
+    "to": "2026-07-31T23:59:59.000Z"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "catalog",
+        "label": "Catalog",
+        "type": "constant",
+        "hide": 2,
+        "query": "main",
+        "current": {
+          "text": "main",
+          "value": "main"
+        },
+        "options": [
+          {
+            "text": "main",
+            "value": "main",
+            "selected": true
+          }
+        ],
+        "description": "The Unity Catalog catalog holding the faa schema. scripts/grafana-provision.sh sets it from databricks.catalog."
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": {
+          "type": "mullerpeter-databricks-datasource",
+          "uid": "databricks-faa"
+        },
+        "query": "SELECT DISTINCT make_model FROM ${catalog}.faa.leased_plans_summary ORDER BY 1",
+        "definition": "SELECT DISTINCT make_model FROM ${catalog}.faa.leased_plans_summary ORDER BY 1",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "min_flights",
+        "label": "Min flights flown",
+        "type": "custom",
+        "query": "50,100,250,500,1000",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "selected": true,
+          "text": "500",
+          "value": "500"
+        },
+        "options": [
+          {
+            "text": "50",
+            "value": "50",
+            "selected": false
+          },
+          {
+            "text": "100",
+            "value": "100",
+            "selected": false
+          },
+          {
+            "text": "250",
+            "value": "250",
+            "selected": false
+          },
+          {
+            "text": "500",
+            "value": "500",
+            "selected": true
+          },
+          {
+            "text": "1000",
+            "value": "1000",
+            "selected": false
+          }
+        ],
+        "description": "Only aircraft, models and build years with at least this many scheduled flights in range are ranked."
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Aircraft Reliability",
+      "type": "link",
+      "url": "/d/faa-aircraft-reliability/aircraft-reliability",
+      "keepTime": true,
+      "icon": "dashboard"
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Leased fleet",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Leased aircraft",
+      "description": "Distinct tail numbers in the leased list that flew in range.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT Tail_Number) FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Flights",
+      "description": "Scheduled flights by the leased aircraft, including cancelled ones.",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sum(flight_count) FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})"
+        }
+      ],
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Completed",
+      "description": "Share of scheduled flights that were not cancelled.",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT try_divide(100 * sum(OK), sum(flight_count)) FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Carrier cxl / 1k",
+      "description": "Cancellations the airline was responsible for (BTS code A: maintenance, crew, cleaning, baggage, fuelling...) per 1,000 scheduled flights. The table's column for these is called Maintenance.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT try_divide(1000 * sum(Maintenance), sum(flight_count)) FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})"
+        }
+      ],
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Other cxl / 1k",
+      "description": "Weather, air-traffic and security cancellations (BTS codes B, C, D) per 1,000 scheduled flights.",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#FF9830",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT try_divide(1000 * sum(Other), sum(flight_count)) FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})"
+        }
+      ],
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Avg departure delay",
+      "description": "Departure delay per completed flight, counting early departures as 0.",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT try_divide(sum(sum_DepDelay), sum(OK)) FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})"
+        }
+      ],
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Flights per month",
+      "description": "Scheduled flights per month by outcome (stacked), and the number of leased aircraft flying (right axis).",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "showPoints": "never"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Completed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Other cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Aircraft"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(month_start AS TIMESTAMP) AS time, sum(OK) AS Completed, sum(Maintenance) AS `Carrier cancelled`,\n       sum(Other) AS `Other cancelled`, count(DISTINCT Tail_Number) AS Aircraft\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Cancellation rate and delay per month",
+      "description": "Carrier and other cancellations per 1,000 scheduled flights, and average departure delay per completed flight (right axis).",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always"
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cxl / 1k"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Other cxl / 1k"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg delay (min)"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(month_start AS TIMESTAMP) AS time,\n       try_divide(1000 * sum(Maintenance), sum(flight_count)) AS `Carrier cxl / 1k`,\n       try_divide(1000 * sum(Other), sum(flight_count)) AS `Other cxl / 1k`,\n       try_divide(sum(sum_DepDelay), sum(OK)) AS `Avg delay (min)`\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 9
+    },
+    {
+      "type": "row",
+      "title": "By model",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 10
+    },
+    {
+      "type": "table",
+      "title": "Models",
+      "description": "Per registered make and model. Flts/ac-month = flights per aircraft per month flown; Cxl/1k = per 1,000 scheduled flights; Delay = departure delay minutes per completed flight; Avg miles = average distance per flight.",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cxl/1k"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Delay min"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 250
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Flights",
+            "desc": true
+          }
+        ]
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT make_model AS Model, count(DISTINCT Tail_Number) AS Aircraft, max(seats) AS Seats,\n       round(avg(year_mfr)) AS `Avg year built`, sum(flight_count) AS Flights,\n       round(try_divide(sum(flight_count), count(*)), 0) AS `Flts/ac-month`,\n       round(try_divide(1000 * sum(Maintenance), sum(flight_count)), 2) AS `Carrier cxl/1k`,\n       round(try_divide(1000 * sum(Other), sum(flight_count)), 2) AS `Other cxl/1k`,\n       round(try_divide(sum(sum_DepDelay), sum(OK)), 1) AS `Delay min`,\n       round(try_divide(sum(sum_Distance), sum(flight_count))) AS `Avg miles`\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY make_model ORDER BY Flights DESC"
+        }
+      ],
+      "id": 11
+    },
+    {
+      "type": "barchart",
+      "title": "Carrier cancellations per 1,000 flights by model",
+      "description": "Models with at least the minimum number of flights in range, worst first.",
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#F2495C"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Model",
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "legend": {
+          "showLegend": false
+        },
+        "xTickLabelMaxLength": 45
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT make_model AS Model, round(try_divide(1000 * sum(Maintenance), sum(flight_count)), 2) AS `Carrier cxl/1k`\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY make_model HAVING sum(flight_count) >= ${min_flights}\nORDER BY 2 DESC"
+        }
+      ],
+      "id": 12
+    },
+    {
+      "type": "barchart",
+      "title": "Carrier cancellations per 1,000 flights by year built",
+      "description": "All selected models, by the aircraft's year of manufacture.",
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#F2495C"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Year built",
+        "showValue": "never",
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(CAST(year_mfr AS STRING), 'Unknown') AS `Year built`, round(try_divide(1000 * sum(Maintenance), sum(flight_count)), 2) AS `Carrier cxl/1k`\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY year_mfr HAVING sum(flight_count) >= ${min_flights}\nORDER BY year_mfr NULLS LAST"
+        }
+      ],
+      "id": 13
+    },
+    {
+      "type": "barchart",
+      "title": "Flights by model and month",
+      "description": "Scheduled flights per month, stacked by model (the eight busiest models in range; the rest are grouped as Other).",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Month",
+        "stacking": "normal",
+        "showValue": "never",
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "right"
+        }
+      },
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "Model",
+            "rowField": "Month",
+            "valueField": "Flights",
+            "emptyValue": "zero"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "Month\\\\Model",
+            "renamePattern": "Month"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH t AS (SELECT make_model, month_start, flight_count FROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})),\ntop AS (SELECT make_model FROM t GROUP BY make_model ORDER BY sum(flight_count) DESC LIMIT 8)\nSELECT date_format(month_start, 'yyyy-MM') AS Month,\n       CASE WHEN make_model IN (SELECT make_model FROM top) THEN make_model ELSE 'Other' END AS Model,\n       sum(flight_count) AS Flights\nFROM t GROUP BY 1, 2 ORDER BY 1, 2"
+        }
+      ],
+      "id": 14
+    },
+    {
+      "type": "row",
+      "title": "Aircraft",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 15
+    },
+    {
+      "type": "table",
+      "title": "Top 10 least reliable leased aircraft",
+      "description": "Ranked by carrier cancellations per 1,000 scheduled flights, then delay; only aircraft with at least the minimum number of flights in range.",
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 12
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cxl/1k"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Delay min"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 250
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, max(year_mfr) AS `Year built`, max(seats) AS Seats,\n       count(*) AS Months, sum(flight_count) AS Flights, sum(Maintenance) AS `Carrier cxl`, sum(Other) AS `Other cxl`,\n       round(try_divide(1000 * sum(Maintenance), sum(flight_count)), 2) AS `Carrier cxl/1k`,\n       round(try_divide(sum(sum_DepDelay), sum(OK)), 1) AS `Delay min`,\n       round(try_divide(sum(sum_Distance), sum(flight_count))) AS `Avg miles`\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY Tail_Number, make_model HAVING sum(flight_count) >= ${min_flights}\nORDER BY `Carrier cxl/1k` DESC, `Delay min` DESC LIMIT 10"
+        }
+      ],
+      "id": 16
+    },
+    {
+      "type": "table",
+      "title": "All leased aircraft",
+      "description": "Every leased aircraft in range; click a column header to sort.",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 14
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Carrier cxl/1k"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Delay min"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 250
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Flights",
+            "desc": true
+          }
+        ]
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, max(year_mfr) AS `Year built`, max(seats) AS Seats, max(engines) AS Engines,\n       date_format(min(month_start), 'yyyy-MM') AS `First month`, date_format(max(month_start), 'yyyy-MM') AS `Last month`, sum(flight_count) AS Flights,\n       round(try_divide(1000 * sum(Maintenance), sum(flight_count)), 2) AS `Carrier cxl/1k`,\n       round(try_divide(1000 * sum(Other), sum(flight_count)), 2) AS `Other cxl/1k`,\n       round(try_divide(sum(sum_DepDelay), sum(OK)), 1) AS `Delay min`,\n       round(try_divide(sum(sum_ActualElapsedTime), sum(OK))) AS `Avg block min`,\n       round(try_divide(sum(sum_Distance), sum(flight_count))) AS `Avg miles`\nFROM ${catalog}.faa.leased_plans_summary WHERE month_start BETWEEN trunc(CAST($__timeFrom AS DATE), 'MM') AND CAST($__timeTo AS DATE) AND make_model IN (${model:singlequote})\nGROUP BY Tail_Number, make_model ORDER BY Flights DESC"
+        }
+      ],
+      "id": 17
+    }
+  ],
+  "schemaVersion": 41,
+  "version": 1
+}
