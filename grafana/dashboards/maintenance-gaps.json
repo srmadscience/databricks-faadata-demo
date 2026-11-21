@@ -1,7 +1,7 @@
 {
   "uid": "faa-maintenance-gaps",
   "title": "Maintenance Gaps",
-  "description": "Leased aircraft's runs of days without flights (aircraft_maintenance_gaps): how often and how long they are out of service, by model, age and aircraft. A gap is a run of consecutive days on which the aircraft completed no BTS-reported flight (days with only cancelled flights count as gap days), so it is an inferred maintenance, storage or schedule period, not a recorded one. Only gaps that ended are included: an aircraft still out of service at the end of the data has no row for that last gap. Built by matillion/aircraft-maintenance-days.tran.yaml.",
+  "description": "Leased aircraft's runs of days without flights (aircraft_maintenance_gaps): how often and how long they are out of service, and how long they operate between service gaps (to spot missed servicing), by model, age and aircraft. Hours are airborne hours (BTS AirTime) flown in the run of flying days before each gap. A gap is a run of consecutive days on which the aircraft completed no BTS-reported flight (days with only cancelled flights count as gap days), so it is an inferred maintenance, storage or schedule period, not a recorded one. Only gaps that ended are included: an aircraft still out of service at the end of the data has no row for that last gap. Built by matillion/aircraft-maintenance-days.tran.yaml.",
   "tags": [
     "faa",
     "aircraft",
@@ -63,9 +63,9 @@
       },
       {
         "name": "min_gap",
-        "label": "Min gap (days)",
+        "label": "Service gap (days)",
         "type": "custom",
-        "query": "1,2,4,8,15,31",
+        "query": "1,2,3,4,8,15,31",
         "multi": false,
         "includeAll": false,
         "current": {
@@ -82,6 +82,11 @@
           {
             "text": "2",
             "value": "2",
+            "selected": false
+          },
+          {
+            "text": "3",
+            "value": "3",
             "selected": false
           },
           {
@@ -105,7 +110,63 @@
             "selected": false
           }
         ],
-        "description": "Leave out gaps shorter than this. One-day gaps are mostly aircraft that don't fly on a given weekday."
+        "description": "A gap of at least this many days counts as a service opportunity and ends an operating period; shorter gaps are left out of the gap panels. One-day gaps are mostly aircraft that don't fly on a given weekday."
+      },
+      {
+        "name": "limit_hours",
+        "label": "Hour limit",
+        "type": "custom",
+        "query": "300,400,500,600,750,1000,1500,2000",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "selected": true,
+          "text": "600",
+          "value": "600"
+        },
+        "options": [
+          {
+            "text": "300",
+            "value": "300",
+            "selected": false
+          },
+          {
+            "text": "400",
+            "value": "400",
+            "selected": false
+          },
+          {
+            "text": "500",
+            "value": "500",
+            "selected": false
+          },
+          {
+            "text": "600",
+            "value": "600",
+            "selected": true
+          },
+          {
+            "text": "750",
+            "value": "750",
+            "selected": false
+          },
+          {
+            "text": "1000",
+            "value": "1000",
+            "selected": false
+          },
+          {
+            "text": "1500",
+            "value": "1500",
+            "selected": false
+          },
+          {
+            "text": "2000",
+            "value": "2000",
+            "selected": false
+          }
+        ],
+        "description": "Airborne hours an aircraft may fly between service gaps; longer operating periods are flagged."
       },
       {
         "name": "tail",
@@ -149,7 +210,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Out of service",
+      "title": "Operating before a service gap (hour limit ${limit_hours} h, service gap ${min_gap}+ days)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -162,12 +223,918 @@
     },
     {
       "type": "stat",
+      "title": "Periods",
+      "description": "An operating period runs from the end of one service gap (a gap of at least the 'Service gap' number of days) to the start of the next; shorter gaps inside it don't end it. Hours are airborne hours (BTS AirTime). Periods whose service gap starts in range.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Median",
+      "description": "Half the operating periods were this long or shorter, in airborne hours.",
+      "gridPos": {
+        "x": 3,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT percentile(hours, 0.5) FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "90% under",
+      "description": "90% of operating periods were this long or shorter.",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT percentile(hours, 0.9) FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Longest",
+      "description": "The longest operating period before a service gap.",
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#FF9830",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT max(hours) FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Over limit",
+      "description": "Operating periods longer than the hour limit before the next service gap. Servicing done overnight, without losing a day's flying, leaves no gap and can't be seen in this data.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count_if(hours > ${limit_hours}) FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Aircraft over",
+      "description": "Aircraft with at least one operating period over the hour limit.",
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT CASE WHEN hours > ${limit_hours} THEN Tail_Number END) FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 7
+    },
+    {
+      "type": "stat",
+      "title": "Now over",
+      "description": "Aircraft that have flown more than the hour limit since their last service gap, as of the end of the time range.",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count_if(hours > ${limit_hours}) FROM (SELECT l.Tail_Number, l.make_model, l.service_end, datediff(CAST($__timeTo AS DATE), l.service_end) AS days_since,\n        count(DISTINCT o.FlightDate) AS flying_days, max(o.FlightDate) AS last_flight, sum(o.AirTime) / 60 AS hours\n   FROM (SELECT Tail_Number, make_model, max(maintenance_end) AS service_end FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g\n         WHERE days_in_maintenance >= ${min_gap} AND maintenance_end < CAST($__timeTo AS DATE) GROUP BY 1, 2) l\n   JOIN ${catalog}.faa.ontime o ON o.Tail_Number = l.Tail_Number AND o.FlightDate > l.service_end\n        AND o.FlightDate <= CAST($__timeTo AS DATE) AND o.Cancelled = 0\n   GROUP BY 1, 2, 3, 4)"
+        }
+      ],
+      "id": 8
+    },
+    {
+      "type": "stat",
+      "title": "Most now",
+      "description": "The most hours any aircraft has flown since its last service gap, as of the end of the time range.",
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#FF9830",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT max(hours) FROM (SELECT l.Tail_Number, l.make_model, l.service_end, datediff(CAST($__timeTo AS DATE), l.service_end) AS days_since,\n        count(DISTINCT o.FlightDate) AS flying_days, max(o.FlightDate) AS last_flight, sum(o.AirTime) / 60 AS hours\n   FROM (SELECT Tail_Number, make_model, max(maintenance_end) AS service_end FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g\n         WHERE days_in_maintenance >= ${min_gap} AND maintenance_end < CAST($__timeTo AS DATE) GROUP BY 1, 2) l\n   JOIN ${catalog}.faa.ontime o ON o.Tail_Number = l.Tail_Number AND o.FlightDate > l.service_end\n        AND o.FlightDate <= CAST($__timeTo AS DATE) AND o.Cancelled = 0\n   GROUP BY 1, 2, 3, 4)"
+        }
+      ],
+      "id": 9
+    },
+    {
+      "type": "timeseries",
+      "title": "Hours flown before each service gap",
+      "description": "An operating period runs from the end of one service gap (a gap of at least the 'Service gap' number of days) to the start of the next; shorter gaps inside it don't end it. Hours are airborne hours (BTS AirTime). Each point is one operating period, placed on the day its service gap began; red points went past the hour limit (dashed line). Servicing done overnight, without losing a day's flying, leaves no gap and can't be seen in this data.",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false,
+            "lineWidth": 0,
+            "fillOpacity": 0
+          },
+          "unit": "suffix: h",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Within limit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF6999"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Over limit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 7
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Limit"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": true
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FADE2A"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(gap_from AS TIMESTAMP) AS time,\n       CASE WHEN hours <= ${limit_hours} THEN hours END AS `Within limit`, CASE WHEN hours > ${limit_hours} THEN hours END AS `Over limit`,\n       ${limit_hours} AS `Limit`\nFROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nORDER BY time"
+        }
+      ],
+      "id": 10
+    },
+    {
+      "type": "barchart",
+      "title": "Operating periods by hours flown",
+      "description": "An operating period runs from the end of one service gap (a gap of at least the 'Service gap' number of days) to the start of the next; shorter gaps inside it don't end it. Hours are airborne hours (BTS AirTime). Number of periods in each band of airborne hours.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Hours",
+        "showValue": "auto",
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT b AS Hours, count(*) AS Periods FROM (\n  SELECT CASE WHEN hours < 100 THEN '<100' WHEN hours < 250 THEN '100-250' WHEN hours < 500 THEN '250-500'\n              WHEN hours < 750 THEN '500-750' WHEN hours < 1000 THEN '750-1k' WHEN hours < 1500 THEN '1k-1.5k'\n              WHEN hours < 2500 THEN '1.5k-2.5k' ELSE '2.5k+' END AS b\n  FROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE))\nGROUP BY b ORDER BY array_position(array('<100', '100-250', '250-500', '500-750', '750-1k', '1k-1.5k', '1.5k-2.5k', '2.5k+'), b)"
+        }
+      ],
+      "id": 11
+    },
+    {
+      "type": "barchart",
+      "title": "Share of operating periods over the limit, by model",
+      "description": "Per model with at least 20 operating periods in range, worst first.",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "unit": "percent",
+          "decimals": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#F2495C"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Model",
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "legend": {
+          "showLegend": false
+        },
+        "xTickLabelMaxLength": 45
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT make_model AS Model, round(100 * count_if(hours > ${limit_hours}) / count(*), 1) AS `Over limit %`\nFROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY make_model HAVING count(*) >= 20 ORDER BY 2 DESC"
+        }
+      ],
+      "id": 12
+    },
+    {
+      "type": "table",
+      "title": "Flying now: hours since last service gap",
+      "description": "Every aircraft that flew after its last service gap, as of the end of the time range, most hours first. Hours come from the BTS flights (AirTime of completed flights). Servicing done overnight, without losing a day's flying, leaves no gap and can't be seen in this data.",
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 12
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hours since"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Over limit by"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, CAST(service_end AS STRING) AS `Last service gap ended`,\n       days_since AS `Days since`, flying_days AS `Flying days`, round(hours) AS `Hours since`,\n       CASE WHEN hours > ${limit_hours} THEN round(hours - ${limit_hours}) END AS `Over limit by`, CAST(last_flight AS STRING) AS `Last flight`\nFROM (SELECT l.Tail_Number, l.make_model, l.service_end, datediff(CAST($__timeTo AS DATE), l.service_end) AS days_since,\n        count(DISTINCT o.FlightDate) AS flying_days, max(o.FlightDate) AS last_flight, sum(o.AirTime) / 60 AS hours\n   FROM (SELECT Tail_Number, make_model, max(maintenance_end) AS service_end FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g\n         WHERE days_in_maintenance >= ${min_gap} AND maintenance_end < CAST($__timeTo AS DATE) GROUP BY 1, 2) l\n   JOIN ${catalog}.faa.ontime o ON o.Tail_Number = l.Tail_Number AND o.FlightDate > l.service_end\n        AND o.FlightDate <= CAST($__timeTo AS DATE) AND o.Cancelled = 0\n   GROUP BY 1, 2, 3, 4)\nORDER BY hours DESC"
+        }
+      ],
+      "id": 13
+    },
+    {
+      "type": "table",
+      "title": "Operating periods over the limit",
+      "description": "An operating period runs from the end of one service gap (a gap of at least the 'Service gap' number of days) to the start of the next; shorter gaps inside it don't end it. Hours are airborne hours (BTS AirTime). Every period longer than the hour limit, longest first. 'First in data' marks periods that start at the aircraft's first flight in the data, so they may have started earlier. Servicing done overnight, without losing a day's flying, leaves no gap and can't be seen in this data.",
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 13
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hours flown"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "fieldMinMax",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Model"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, CAST(run_from AS STRING) AS `Operating from`, CAST(last_flight AS STRING) AS `Last flight`,\n       cal_days AS `Days`, flying_days AS `Flying days`, round(hours) AS `Hours flown`, round(hours - ${limit_hours}) AS `Over limit by`,\n       CAST(gap_from AS STRING) AS `Service gap from`, gap_days AS `Gap days`, CASE WHEN first_in_data THEN 'yes' END AS `First in data`\nFROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND hours > ${limit_hours}\nORDER BY hours DESC LIMIT 500"
+        }
+      ],
+      "id": 14
+    },
+    {
+      "type": "row",
+      "title": "Out of service",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 15
+    },
+    {
+      "type": "stat",
       "title": "Aircraft",
       "description": "Leased aircraft with at least one gap starting in range.",
       "gridPos": {
         "x": 0,
-        "y": 1,
-        "w": 4,
+        "y": 51,
+        "w": 3,
         "h": 4
       },
       "fieldConfig": {
@@ -219,16 +1186,16 @@
           "rawSql": "SELECT count(DISTINCT Tail_Number) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
         }
       ],
-      "id": 2
+      "id": 16
     },
     {
       "type": "stat",
       "title": "Gaps",
       "description": "A gap is a run of consecutive days on which the aircraft completed no BTS-reported flight (days with only cancelled flights count as gap days), so it is an inferred maintenance, storage or schedule period, not a recorded one. Only gaps that ended are included: an aircraft still out of service at the end of the data has no row for that last gap. Built by matillion/aircraft-maintenance-days.tran.yaml. Gaps starting in range, at least the minimum length.",
       "gridPos": {
-        "x": 4,
-        "y": 1,
-        "w": 4,
+        "x": 3,
+        "y": 51,
+        "w": 3,
         "h": 4
       },
       "fieldConfig": {
@@ -280,16 +1247,16 @@
           "rawSql": "SELECT count(*) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
         }
       ],
-      "id": 3
+      "id": 17
     },
     {
       "type": "stat",
-      "title": "Days out of service",
+      "title": "Days out",
       "description": "Total aircraft-days in the gaps that start in range.",
       "gridPos": {
-        "x": 8,
-        "y": 1,
-        "w": 4,
+        "x": 6,
+        "y": 51,
+        "w": 3,
         "h": 4
       },
       "fieldConfig": {
@@ -341,16 +1308,16 @@
           "rawSql": "SELECT sum(days_in_maintenance) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
         }
       ],
-      "id": 4
+      "id": 18
     },
     {
       "type": "stat",
       "title": "Median gap",
       "description": "Half the gaps are this long or shorter.",
       "gridPos": {
-        "x": 12,
-        "y": 1,
-        "w": 4,
+        "x": 9,
+        "y": 51,
+        "w": 3,
         "h": 4
       },
       "fieldConfig": {
@@ -402,16 +1369,16 @@
           "rawSql": "SELECT percentile(days_in_maintenance, 0.5) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
         }
       ],
-      "id": 5
+      "id": 19
     },
     {
       "type": "stat",
       "title": "Average gap",
       "description": "Mean gap length; pulled up by long storage periods.",
       "gridPos": {
-        "x": 16,
-        "y": 1,
-        "w": 4,
+        "x": 12,
+        "y": 51,
+        "w": 3,
         "h": 4
       },
       "fieldConfig": {
@@ -463,16 +1430,16 @@
           "rawSql": "SELECT avg(days_in_maintenance) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
         }
       ],
-      "id": 6
+      "id": 20
     },
     {
       "type": "stat",
-      "title": "Flying between gaps",
+      "title": "Days flying",
       "description": "Average run of consecutive flying days before a gap.",
       "gridPos": {
-        "x": 20,
-        "y": 1,
-        "w": 4,
+        "x": 15,
+        "y": 51,
+        "w": 3,
         "h": 4
       },
       "fieldConfig": {
@@ -524,7 +1491,129 @@
           "rawSql": "SELECT avg(days_with_flights) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
         }
       ],
-      "id": 7
+      "id": 21
+    },
+    {
+      "type": "stat",
+      "title": "Hours flying",
+      "description": "Average airborne hours (BTS AirTime) flown in the run of flying days before a gap.",
+      "gridPos": {
+        "x": 18,
+        "y": 51,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT avg(total_hours) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 22
+    },
+    {
+      "type": "stat",
+      "title": "Hours / day",
+      "description": "Airborne hours per day on which the aircraft flew.",
+      "gridPos": {
+        "x": 21,
+        "y": 51,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5794F2",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT try_divide(sum(total_hours), sum(days_with_flights)) FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)"
+        }
+      ],
+      "id": 23
     },
     {
       "type": "timeseries",
@@ -532,7 +1621,7 @@
       "description": "How many of the selected aircraft were in a gap on each day, with a 7-day average. The 2020 rise is the COVID-19 parking of fleets.",
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 55,
         "w": 24,
         "h": 9
       },
@@ -618,7 +1707,7 @@
           "rawSql": "SELECT time, n AS `Out of service`, avg(n) OVER (ORDER BY time ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS `7-day average`\nFROM (SELECT CAST(day AS TIMESTAMP) AS time, count(DISTINCT Tail_Number) AS n FROM (SELECT Tail_Number, make_model, explode(sequence(maintenance_start, maintenance_end)) AS day FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_end >= CAST($__timeFrom AS DATE) AND maintenance_start <= CAST($__timeTo AS DATE))\n      WHERE day BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) GROUP BY 1)\nORDER BY time"
         }
       ],
-      "id": 8
+      "id": 24
     },
     {
       "type": "row",
@@ -626,12 +1715,12 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 64,
         "w": 24,
         "h": 1
       },
       "panels": [],
-      "id": 9
+      "id": 25
     },
     {
       "type": "barchart",
@@ -639,7 +1728,7 @@
       "description": "Number of gaps in each length band. Most are one day: aircraft that don't fly on a given day of the week.",
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 65,
         "w": 8,
         "h": 9
       },
@@ -680,7 +1769,7 @@
           "rawSql": "SELECT b AS Days, count(*) AS Gaps FROM (\n  SELECT CASE WHEN days_in_maintenance = 1 THEN '1' WHEN days_in_maintenance <= 3 THEN '2-3' WHEN days_in_maintenance <= 7 THEN '4-7'\n              WHEN days_in_maintenance <= 14 THEN '8-14' WHEN days_in_maintenance <= 30 THEN '15-30'\n              WHEN days_in_maintenance <= 90 THEN '31-90' WHEN days_in_maintenance <= 365 THEN '91-365' ELSE '365+' END AS b\n  FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE))\nGROUP BY b ORDER BY array_position(array('1', '2-3', '4-7', '8-14', '15-30', '31-90', '91-365', '365+'), b)"
         }
       ],
-      "id": 10
+      "id": 26
     },
     {
       "type": "barchart",
@@ -688,7 +1777,7 @@
       "description": "Aircraft-days in each length band: a few long gaps account for most of the time out of service.",
       "gridPos": {
         "x": 8,
-        "y": 15,
+        "y": 65,
         "w": 8,
         "h": 9
       },
@@ -729,7 +1818,7 @@
           "rawSql": "SELECT b AS Days, sum(days_in_maintenance) AS `Aircraft-days` FROM (\n  SELECT days_in_maintenance, CASE WHEN days_in_maintenance = 1 THEN '1' WHEN days_in_maintenance <= 3 THEN '2-3' WHEN days_in_maintenance <= 7 THEN '4-7'\n              WHEN days_in_maintenance <= 14 THEN '8-14' WHEN days_in_maintenance <= 30 THEN '15-30'\n              WHEN days_in_maintenance <= 90 THEN '31-90' WHEN days_in_maintenance <= 365 THEN '91-365' ELSE '365+' END AS b\n  FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE))\nGROUP BY b ORDER BY array_position(array('1', '2-3', '4-7', '8-14', '15-30', '31-90', '91-365', '365+'), b)"
         }
       ],
-      "id": 11
+      "id": 27
     },
     {
       "type": "barchart",
@@ -737,7 +1826,7 @@
       "description": "Which weekday the first day out of service falls on. A peak on one day means aircraft regularly sit out that day.",
       "gridPos": {
         "x": 16,
-        "y": 15,
+        "y": 65,
         "w": 8,
         "h": 9
       },
@@ -778,7 +1867,7 @@
           "rawSql": "SELECT date_format(maintenance_start, 'E') AS Day, count(*) AS Gaps FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY Day, dayofweek(maintenance_start) ORDER BY (dayofweek(maintenance_start) + 5) % 7"
         }
       ],
-      "id": 12
+      "id": 28
     },
     {
       "type": "barchart",
@@ -786,7 +1875,7 @@
       "description": "Gaps starting each month, split into short (up to 3 days), medium (4 to 30) and long (over 30).",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 74,
         "w": 24,
         "h": 8
       },
@@ -874,7 +1963,7 @@
           "rawSql": "SELECT date_format(maintenance_start, 'yyyy-MM') AS Month,\n       count_if(days_in_maintenance <= 3) AS `Up to 3 days`,\n       count_if(days_in_maintenance BETWEEN 4 AND 30) AS `4-30 days`,\n       count_if(days_in_maintenance > 30) AS `Over 30 days`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY 1 ORDER BY 1"
         }
       ],
-      "id": 13
+      "id": 29
     },
     {
       "type": "row",
@@ -882,12 +1971,12 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 82,
         "w": 24,
         "h": 1
       },
       "panels": [],
-      "id": 14
+      "id": 30
     },
     {
       "type": "table",
@@ -895,7 +1984,7 @@
       "description": "Per registered make and model. Availability = flying days / (flying days + gap days) over the gaps starting in range; Gaps/ac-yr = gaps per aircraft per year of the range.",
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 83,
         "w": 24,
         "h": 10
       },
@@ -1015,10 +2104,10 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT make_model AS Model, count(DISTINCT Tail_Number) AS Aircraft, max(seats) AS Seats, round(avg(year_mfr)) AS `Avg year built`,\n       count(*) AS Gaps,\n       round(try_divide(count(*), count(DISTINCT Tail_Number) * greatest(datediff(CAST($__timeTo AS DATE), CAST($__timeFrom AS DATE)), 1) / 365.25), 1) AS `Gaps/ac-yr`,\n       round(avg(days_in_maintenance), 1) AS `Avg gap (d)`, max(days_in_maintenance) AS `Longest (d)`,\n       round(try_divide(sum(days_in_maintenance), count(DISTINCT Tail_Number))) AS `Days out/ac`,\n       round(try_divide(100 * sum(days_with_flights), sum(days_with_flights + days_in_maintenance)), 1) AS `Availability %`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY make_model ORDER BY Aircraft DESC"
+          "rawSql": "SELECT make_model AS Model, count(DISTINCT Tail_Number) AS Aircraft, max(seats) AS Seats, round(avg(year_mfr)) AS `Avg year built`,\n       count(*) AS Gaps,\n       round(try_divide(count(*), count(DISTINCT Tail_Number) * greatest(datediff(CAST($__timeTo AS DATE), CAST($__timeFrom AS DATE)), 1) / 365.25), 1) AS `Gaps/ac-yr`,\n       round(avg(days_in_maintenance), 1) AS `Avg gap (d)`, max(days_in_maintenance) AS `Longest (d)`,\n       round(try_divide(sum(days_in_maintenance), count(DISTINCT Tail_Number))) AS `Days out/ac`,\n       round(avg(total_hours)) AS `Avg hrs between gaps`, round(try_divide(sum(total_hours), sum(days_with_flights)), 1) AS `Hrs/flying day`,\n       round(try_divide(100 * sum(days_with_flights), sum(days_with_flights + days_in_maintenance)), 1) AS `Availability %`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY make_model ORDER BY Aircraft DESC"
         }
       ],
-      "id": 15
+      "id": 31
     },
     {
       "type": "barchart",
@@ -1026,8 +2115,8 @@
       "description": "Flying days as a share of flying plus gap days, models with at least 5 aircraft, lowest first.",
       "gridPos": {
         "x": 0,
-        "y": 43,
-        "w": 12,
+        "y": 93,
+        "w": 8,
         "h": 10
       },
       "fieldConfig": {
@@ -1073,16 +2162,16 @@
           "rawSql": "SELECT make_model AS Model, round(try_divide(100 * sum(days_with_flights), sum(days_with_flights + days_in_maintenance)), 1) AS `Availability %`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY make_model HAVING count(DISTINCT Tail_Number) >= 5 ORDER BY 2"
         }
       ],
-      "id": 16
+      "id": 32
     },
     {
       "type": "barchart",
       "title": "Average gap by year built",
       "description": "Mean gap length by the aircraft's year of manufacture.",
       "gridPos": {
-        "x": 12,
-        "y": 43,
-        "w": 12,
+        "x": 8,
+        "y": 93,
+        "w": 8,
         "h": 10
       },
       "fieldConfig": {
@@ -1102,6 +2191,7 @@
         "xField": "Year built",
         "showValue": "never",
         "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 40,
         "legend": {
           "showLegend": false
         }
@@ -1123,7 +2213,56 @@
           "rawSql": "SELECT coalesce(CAST(year_mfr AS STRING), 'Unknown') AS `Year built`, round(avg(days_in_maintenance), 1) AS `Avg gap (d)`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY year_mfr ORDER BY year_mfr NULLS LAST"
         }
       ],
-      "id": 17
+      "id": 33
+    },
+    {
+      "type": "barchart",
+      "title": "Average gap by hours flown before it",
+      "description": "Mean gap length by the airborne hours flown in the run of flying days before the gap: do longer runs end in longer gaps?",
+      "gridPos": {
+        "x": 16,
+        "y": 93,
+        "w": 8,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#B877D9"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Hours flown before",
+        "showValue": "auto",
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT b AS `Hours flown before`, round(avg(days_in_maintenance), 1) AS `Avg gap (d)` FROM (\n  SELECT days_in_maintenance, CASE WHEN total_hours < 50 THEN '<50' WHEN total_hours < 100 THEN '50-100' WHEN total_hours < 250 THEN '100-250'\n              WHEN total_hours < 500 THEN '250-500' WHEN total_hours < 1000 THEN '500-1k' ELSE '1k+' END AS b\n  FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE))\nGROUP BY b ORDER BY array_position(array('<50', '50-100', '100-250', '250-500', '500-1k', '1k+'), b)"
+        }
+      ],
+      "id": 34
     },
     {
       "type": "row",
@@ -1131,12 +2270,12 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 103,
         "w": 24,
         "h": 1
       },
       "panels": [],
-      "id": 18
+      "id": 35
     },
     {
       "type": "table",
@@ -1144,7 +2283,7 @@
       "description": "The 25 longest gaps starting in range, with the flying run before each.",
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 104,
         "w": 24,
         "h": 11
       },
@@ -1208,10 +2347,10 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, year_mfr AS `Year built`, CAST(maintenance_start AS STRING) AS `Out from`,\n       CAST(maintenance_end AS STRING) AS `Out to`, days_in_maintenance AS `Days out`, CAST(start_date AS STRING) AS `Flying since`, days_with_flights AS `Days flying before`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nORDER BY days_in_maintenance DESC LIMIT 25"
+          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, year_mfr AS `Year built`, CAST(maintenance_start AS STRING) AS `Out from`,\n       CAST(maintenance_end AS STRING) AS `Out to`, days_in_maintenance AS `Days out`, CAST(start_date AS STRING) AS `Flying since`, days_with_flights AS `Days flying before`, round(total_hours) AS `Hours before`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nORDER BY days_in_maintenance DESC LIMIT 25"
         }
       ],
-      "id": 19
+      "id": 36
     },
     {
       "type": "table",
@@ -1219,7 +2358,7 @@
       "description": "Every aircraft with gaps starting in range; click a header to sort.",
       "gridPos": {
         "x": 0,
-        "y": 65,
+        "y": 115,
         "w": 24,
         "h": 14
       },
@@ -1339,10 +2478,10 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, max(year_mfr) AS `Year built`, count(*) AS Gaps,\n       sum(days_in_maintenance) AS `Days out`, round(avg(days_in_maintenance), 1) AS `Avg gap (d)`, max(days_in_maintenance) AS `Longest (d)`,\n       round(try_divide(100 * sum(days_with_flights), sum(days_with_flights + days_in_maintenance)), 1) AS `Availability %`,\n       CAST(max(maintenance_start) AS STRING) AS `Last gap`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY Tail_Number, make_model ORDER BY `Days out` DESC"
+          "rawSql": "SELECT Tail_Number AS Tail, make_model AS Model, max(year_mfr) AS `Year built`, count(*) AS Gaps,\n       sum(days_in_maintenance) AS `Days out`, round(sum(total_hours)) AS `Hours flown`, round(avg(total_hours)) AS `Avg hrs between gaps`, round(avg(days_in_maintenance), 1) AS `Avg gap (d)`, max(days_in_maintenance) AS `Longest (d)`,\n       round(try_divide(100 * sum(days_with_flights), sum(days_with_flights + days_in_maintenance)), 1) AS `Availability %`,\n       CAST(max(maintenance_start) AS STRING) AS `Last gap`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE)\nGROUP BY Tail_Number, make_model ORDER BY `Days out` DESC"
         }
       ],
-      "id": 20
+      "id": 37
     },
     {
       "type": "row",
@@ -1350,12 +2489,12 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 79,
+        "y": 129,
         "w": 24,
         "h": 1
       },
       "panels": [],
-      "id": 21
+      "id": 38
     },
     {
       "type": "barchart",
@@ -1363,7 +2502,7 @@
       "description": "Each gap of the selected aircraft (pick it in the Aircraft list at the top), by the day it started.",
       "gridPos": {
         "x": 0,
-        "y": 80,
+        "y": 130,
         "w": 24,
         "h": 8
       },
@@ -1410,7 +2549,7 @@
           "rawSql": "SELECT CAST(maintenance_start AS STRING) AS `Out from`, days_in_maintenance AS `Days out`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Tail_Number = '${tail}'\nORDER BY maintenance_start"
         }
       ],
-      "id": 22
+      "id": 39
     },
     {
       "type": "table",
@@ -1418,7 +2557,7 @@
       "description": "Every gap of the selected aircraft in range, newest first.",
       "gridPos": {
         "x": 0,
-        "y": 88,
+        "y": 138,
         "w": 24,
         "h": 10
       },
@@ -1470,10 +2609,93 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT CAST(start_date AS STRING) AS `Flying from`, days_with_flights AS `Days flying`, CAST(maintenance_start AS STRING) AS `Out from`,\n       CAST(maintenance_end AS STRING) AS `Out to`, days_in_maintenance AS `Days out`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Tail_Number = '${tail}'\nORDER BY maintenance_start DESC"
+          "rawSql": "SELECT CAST(start_date AS STRING) AS `Flying from`, days_with_flights AS `Days flying`, round(total_hours, 1) AS `Hours flown`, CAST(maintenance_start AS STRING) AS `Out from`,\n       CAST(maintenance_end AS STRING) AS `Out to`, days_in_maintenance AS `Days out`\nFROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model, a.year_mfr, a.seats\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE g.days_in_maintenance >= ${min_gap} AND coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g WHERE maintenance_start BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Tail_Number = '${tail}'\nORDER BY maintenance_start DESC"
         }
       ],
-      "id": 23
+      "id": 40
+    },
+    {
+      "type": "barchart",
+      "title": "Hours flown between service gaps: ${tail}",
+      "description": "An operating period runs from the end of one service gap (a gap of at least the 'Service gap' number of days) to the start of the next; shorter gaps inside it don't end it. Hours are airborne hours (BTS AirTime). Each bar is one period of the selected aircraft, labelled with the day the service gap began; the line is the hour limit.",
+      "gridPos": {
+        "x": 0,
+        "y": 148,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "unit": "suffix: h",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Within limit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Over limit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "Service gap from",
+        "stacking": "normal",
+        "showValue": "never",
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 100,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CAST(gap_from AS STRING) AS `Service gap from`,\n       CASE WHEN hours <= ${limit_hours} THEN round(hours) END AS `Within limit`, CASE WHEN hours > ${limit_hours} THEN round(hours) END AS `Over limit`\nFROM (SELECT Tail_Number, make_model, min(start_date) AS run_from, date_add(max(maintenance_start), -1) AS last_flight,\n        datediff(max(maintenance_start), min(start_date)) AS cal_days, sum(days_with_flights) AS flying_days,\n        sum(total_hours) AS hours, max(maintenance_start) AS gap_from, max_by(days_in_maintenance, maintenance_start) AS gap_days,\n        min(start_date) = min(first_day) AS first_in_data\n   FROM (SELECT g.*, min(start_date) OVER (PARTITION BY Tail_Number) AS first_day,\n                coalesce(sum(CASE WHEN days_in_maintenance >= ${min_gap} THEN 1 ELSE 0 END) OVER (PARTITION BY Tail_Number\n                         ORDER BY maintenance_start ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS grp\n         FROM (SELECT g.*, date_add(g.maintenance_start, g.days_in_maintenance - 1) AS maintenance_end, coalesce(a.make_model, 'Unknown') AS make_model\n      FROM ${catalog}.faa.aircraft_maintenance_gaps g LEFT JOIN ${catalog}.faa.aircraft_info a ON a.tail = g.Tail_Number\n      WHERE coalesce(a.make_model, 'Unknown') IN (${model:singlequote})) g)\n   GROUP BY Tail_Number, make_model, grp HAVING max_by(days_in_maintenance, maintenance_start) >= ${min_gap}) r WHERE gap_from BETWEEN CAST($__timeFrom AS DATE) AND CAST($__timeTo AS DATE) AND Tail_Number = '${tail}'\nORDER BY gap_from"
+        }
+      ],
+      "id": 41
     }
   ],
   "schemaVersion": 41,
