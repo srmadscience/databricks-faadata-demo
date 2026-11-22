@@ -1,0 +1,132 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Which manufacturers dominate the FAA aircraft model registry, by\
+      \ number of models and total seating capacity"
+    origin: "maia-01a1f378-54cd-7036-b2e9-071b0ac8240a"
+  components:
+    Needs tail number:
+      type: "filter"
+      sources:
+      - "Year >= 2025"
+      parameters:
+        componentName: "Needs tail number"
+        mode: "Basic"
+        filterConditions:
+        - - "Tail_Number"
+          - "Not"
+          - "Null or blank"
+          - ""
+        combineCondition: "And"
+    leased_airplanes:
+      type: "rewrite-table-dl"
+      sources:
+      - "Top 300"
+      parameters:
+        componentName: "leased_airplanes"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        table: "leased_airplanes"
+    Year >= 2025:
+      type: "filter"
+      sources:
+      - "Read ontime flights table"
+      parameters:
+        componentName: "Year >= 2025"
+        mode: "Basic"
+        filterConditions:
+        - - "Year"
+          - "Is"
+          - "Greater than or equal to"
+          - "2025"
+        combineCondition: "And"
+    Top 300:
+      type: "filter"
+      sources:
+      - "Find busiest planes desc"
+      parameters:
+        componentName: "Top 300"
+        mode: "Basic"
+        filterConditions:
+        - - "rank_number"
+          - "Is"
+          - "Less than or equal to"
+          - "300"
+        combineCondition: "And"
+    Read ontime flights table:
+      type: "table-input"
+      parameters:
+        componentName: "Read ontime flights table"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "ontime"
+        columnNames:
+        - "Year"
+        - "Tail_Number"
+        metadataColumnNames:
+        offsetType: "None"
+    Group by Tail Number:
+      type: "aggregate"
+      sources:
+      - "Needs tail number"
+      parameters:
+        componentName: "Group by Tail Number"
+        groupings:
+        - "Tail_Number"
+        aggregations:
+        - - "Tail_Number"
+          - "Count"
+        - - "Year"
+          - "Count"
+    Find busiest planes desc:
+      type: "rank"
+      sources:
+      - "Group by Tail Number"
+      parameters:
+        componentName: "Find busiest planes desc"
+        includeInputColumns: "Yes"
+        partitionData:
+        orderingWithinPartitions:
+        - - "count_Tail_Number"
+          - "Descending"
+        functions:
+        - - "Rank"
+          - "rank_number"
+design:
+  components:
+    Needs tail number:
+      position:
+        x: -530
+        "y": -630
+      tempMetlId:
+    leased_airplanes:
+      position:
+        x: -410
+        "y": -500
+      tempMetlId:
+    Year >= 2025:
+      position:
+        x: -660
+        "y": -630
+      tempMetlId:
+    Top 300:
+      position:
+        x: -550
+        "y": -500
+      tempMetlId:
+    Read ontime flights table:
+      position:
+        x: -840
+        "y": -630
+      tempMetlId:
+    Group by Tail Number:
+      position:
+        x: -810
+        "y": -500
+      tempMetlId:
+    Find busiest planes desc:
+      position:
+        x: -670
+        "y": -500
+      tempMetlId:

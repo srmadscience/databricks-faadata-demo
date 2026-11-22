@@ -537,7 +537,7 @@ pipeline:
         componentName: "Rewrite Table"
         catalog: "[Environment Default]"
         schema: "[Environment Default]"
-        table: "mail_leased_plans_summary"
+        table: "leased_plans_summary"
         partitionKeys:
         tableProperties:
         comment:

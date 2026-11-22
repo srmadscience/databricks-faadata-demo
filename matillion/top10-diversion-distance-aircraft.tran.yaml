@@ -1,0 +1,168 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    origin: "maia-01a2033e-0fcc-7250-9811-74e4aa46dae5"
+    description: "Top 10 aircraft (tail numbers) by total distance flown during diversions, from ontime flight data"
+  components:
+    Flights:
+      type: "table-input"
+      parameters:
+        componentName: "Flights"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "ontime"
+        columnNames:
+        - "Tail_Number"
+        - "Diverted"
+        - "DivDistance"
+        metadataColumnNames:
+        offsetType: "None"
+    Diverted Flights Only:
+      type: "filter"
+      sources:
+      - "Flights"
+      parameters:
+        componentName: "Diverted Flights Only"
+        mode: "Basic"
+        filterConditions:
+        - - "Diverted"
+          - "Is"
+          - "Equal to"
+          - "1"
+        - - "Tail_Number"
+          - "Not"
+          - "Null or blank"
+          - ""
+        combineCondition: "And"
+    Total per Aircraft:
+      type: "aggregate"
+      sources:
+      - "Diverted Flights Only"
+      parameters:
+        componentName: "Total per Aircraft"
+        groupings:
+        - "Tail_Number"
+        aggregations:
+        - - "DivDistance"
+          - "Sum"
+        - - "Tail_Number"
+          - "Count"
+        groupingType: "Group By"
+    Rank by Distance:
+      type: "rank"
+      sources:
+      - "Total per Aircraft"
+      parameters:
+        componentName: "Rank by Distance"
+        includeInputColumns: "Yes"
+        partitionData:
+        orderingWithinPartitions:
+        - - "sum_DivDistance"
+          - "Descending"
+        - - "count_Tail_Number"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "rank_number"
+    Top 10:
+      type: "filter"
+      sources:
+      - "Rank by Distance"
+      parameters:
+        componentName: "Top 10"
+        mode: "Basic"
+        filterConditions:
+        - - "rank_number"
+          - "Is"
+          - "Less than or equal to"
+          - "10"
+        combineCondition: "And"
+    Aircraft Registry:
+      type: "table-input"
+      parameters:
+        componentName: "Aircraft Registry"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "aircraft"
+        columnNames:
+        - "tail"
+        - "manufacturer"
+        - "model"
+        metadataColumnNames:
+        offsetType: "None"
+    Add Manufacturer and Model:
+      type: "join"
+      sources:
+      - "Top 10"
+      - "Aircraft Registry"
+      parameters:
+        componentName: "Add Manufacturer and Model"
+        mainTable: "Top 10"
+        mainTableAlias: "t"
+        joins:
+        - - "Aircraft Registry"
+          - "a"
+          - "Left"
+        joinExpressions:
+        - - "`t`.`Tail_Number` = `a`.`tail`"
+          - "t_Left_a"
+        columnMappings:
+        - - "t.rank_number"
+          - "rank_number"
+        - - "t.Tail_Number"
+          - "Tail_Number"
+        - - "a.manufacturer"
+          - "manufacturer"
+        - - "a.model"
+          - "model"
+        - - "t.sum_DivDistance"
+          - "total_diversion_distance"
+        - - "t.count_Tail_Number"
+          - "diversion_count"
+    Write Top 10 Table:
+      type: "rewrite-table-dl"
+      sources:
+      - "Add Manufacturer and Model"
+      parameters:
+        componentName: "Write Top 10 Table"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        table: "top10_aircraft_diversion_distance"
+        partitionKeys:
+        tableProperties:
+        comment:
+design:
+  components:
+    Flights:
+      position:
+        x: 0
+        "y": 0
+    Diverted Flights Only:
+      position:
+        x: 160
+        "y": 0
+    Total per Aircraft:
+      position:
+        x: 320
+        "y": 0
+    Rank by Distance:
+      position:
+        x: 480
+        "y": 0
+    Top 10:
+      position:
+        x: 640
+        "y": 0
+    Aircraft Registry:
+      position:
+        x: 640
+        "y": 140
+    Add Manufacturer and Model:
+      position:
+        x: 800
+        "y": 0
+    Write Top 10 Table:
+      position:
+        x: 960
+        "y": 0
