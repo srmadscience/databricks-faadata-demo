@@ -1,0 +1,268 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    origin: "maia-01a1f9f2-32b0-7bec-8f57-e7560f0073cc"
+    description: "One row per maintenance gap (any run of consecutive days with no completed flights) for each leased aircraft: start of the preceding flying run, days with flights, total flight hours in that run, and days in maintenance. Writes aircraft_maintenance_gaps."
+  components:
+    Flights:
+      type: "table-input"
+      parameters:
+        componentName: "Flights"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "ontime"
+        columnNames:
+        - "FlightDate"
+        - "Tail_Number"
+        - "Cancelled"
+        - "AirTime"
+        metadataColumnNames:
+        offsetType: "None"
+    Leased Airplanes:
+      type: "table-input"
+      parameters:
+        componentName: "Leased Airplanes"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        targetTable: "leased_airplanes"
+        columnNames:
+        - "Tail_Number"
+        metadataColumnNames:
+        offsetType: "None"
+    Completed Flights:
+      type: "filter"
+      sources:
+      - "Flights"
+      parameters:
+        componentName: "Completed Flights"
+        mode: "Basic"
+        filterConditions:
+        - - "Cancelled"
+          - "Is"
+          - "Equal to"
+          - "0"
+        combineCondition: "And"
+    Leased Flights:
+      type: "join"
+      sources:
+      - "Leased Airplanes"
+      - "Completed Flights"
+      parameters:
+        componentName: "Leased Flights"
+        mainTable: "Leased Airplanes"
+        mainTableAlias: "la"
+        joins:
+        - - "Completed Flights"
+          - "f"
+          - "Inner"
+        joinExpressions:
+        - - "`la`.`Tail_Number` = `f`.`Tail_Number`"
+          - "la_Inner_f"
+        columnMappings:
+        - - "la.Tail_Number"
+          - "Tail_Number"
+        - - "f.FlightDate"
+          - "FlightDate"
+        - - "f.AirTime"
+          - "AirTime"
+    Air Time per Day:
+      type: "aggregate"
+      sources:
+      - "Leased Flights"
+      parameters:
+        componentName: "Air Time per Day"
+        groupings:
+        - "Tail_Number"
+        - "FlightDate"
+        aggregations:
+        - - "AirTime"
+          - "Sum"
+        groupingType: "Group By"
+    First Flight:
+      type: "window-calculation"
+      sources:
+      - "Air Time per Day"
+      parameters:
+        componentName: "First Flight"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "Tail_Number"
+        functions:
+        - - "Minimum"
+          - "FlightDate"
+          - "first_flight"
+    Running Totals:
+      type: "window-calculation"
+      sources:
+      - "First Flight"
+      parameters:
+        componentName: "Running Totals"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "Tail_Number"
+        orderingWithinPartitions:
+        - - "FlightDate"
+          - "Ascending"
+        functions:
+        - - "Sum"
+          - "sum_AirTime"
+          - "cum_air_minutes"
+        - - "Count"
+          - "FlightDate"
+          - "cum_flown_days"
+        lowerBound: "unbounded preceding"
+        upperBound: "current row"
+    Previous Flight Day:
+      type: "lead-lag"
+      sources:
+      - "Running Totals"
+      parameters:
+        componentName: "Previous Flight Day"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "Tail_Number"
+        orderingsWithinPartitions:
+        - - "FlightDate"
+          - "Ascending"
+        functions:
+        - - "Lag"
+          - "FlightDate"
+          - "1"
+          - "prev_flight"
+    Gap Length:
+      type: "calculator"
+      sources:
+      - "Previous Flight Day"
+      parameters:
+        componentName: "Gap Length"
+        includeInputColumns: "Yes"
+        calculations:
+        - - "DATEDIFF(`FlightDate`, `prev_flight`) - 1"
+          - "gap_days"
+        - - "COALESCE(`cum_air_minutes`, 0) - COALESCE(`sum_AirTime`, 0)"
+          - "air_minutes_before_gap"
+        - - "`cum_flown_days` - 1"
+          - "flown_days_before_gap"
+    Gaps Only:
+      type: "filter"
+      sources:
+      - "Gap Length"
+      parameters:
+        componentName: "Gaps Only"
+        mode: "Basic"
+        filterConditions:
+        - - "gap_days"
+          - "Is"
+          - "Greater than"
+          - "0"
+        combineCondition: "And"
+    Previous Gap:
+      type: "lead-lag"
+      sources:
+      - "Gaps Only"
+      parameters:
+        componentName: "Previous Gap"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "Tail_Number"
+        orderingsWithinPartitions:
+        - - "FlightDate"
+          - "Ascending"
+        functions:
+        - - "Lag"
+          - "FlightDate"
+          - "1"
+          - "prev_resume"
+        - - "Lag"
+          - "air_minutes_before_gap"
+          - "1"
+          - "prev_gap_air_minutes"
+        - - "Lag"
+          - "flown_days_before_gap"
+          - "1"
+          - "prev_gap_flown_days"
+    Gap Report:
+      type: "calculator"
+      sources:
+      - "Previous Gap"
+      parameters:
+        componentName: "Gap Report"
+        includeInputColumns: "No"
+        calculations:
+        - - "`Tail_Number`"
+          - "Tail_Number"
+        - - "COALESCE(`prev_resume`, `first_flight`)"
+          - "start_date"
+        - - "`flown_days_before_gap` - COALESCE(`prev_gap_flown_days`, 0)"
+          - "days_with_flights"
+        - - "ROUND((`air_minutes_before_gap` - COALESCE(`prev_gap_air_minutes`, 0)) / 60, 1)"
+          - "total_hours"
+        - - "DATE_ADD(`prev_flight`, 1)"
+          - "maintenance_start"
+        - - "`gap_days`"
+          - "days_in_maintenance"
+    Write Gaps Table:
+      type: "rewrite-table-dl"
+      sources:
+      - "Gap Report"
+      parameters:
+        componentName: "Write Gaps Table"
+        catalog: "[Environment Default]"
+        schema: "[Environment Default]"
+        table: "aircraft_maintenance_gaps"
+        comment: "One row per maintenance gap (any day(s) without a completed flight) per leased aircraft"
+design:
+  components:
+    Flights:
+      position:
+        x: 0
+        "y": 100
+    Leased Airplanes:
+      position:
+        x: 0
+        "y": 0
+    Completed Flights:
+      position:
+        x: 150
+        "y": 100
+    Leased Flights:
+      position:
+        x: 300
+        "y": 0
+    Air Time per Day:
+      position:
+        x: 450
+        "y": 0
+    First Flight:
+      position:
+        x: 600
+        "y": 0
+    Running Totals:
+      position:
+        x: 750
+        "y": 0
+    Previous Flight Day:
+      position:
+        x: 900
+        "y": 0
+    Gap Length:
+      position:
+        x: 1050
+        "y": 0
+    Gaps Only:
+      position:
+        x: 1200
+        "y": 0
+    Previous Gap:
+      position:
+        x: 1350
+        "y": 0
+    Gap Report:
+      position:
+        x: 1500
+        "y": 0
+    Write Gaps Table:
+      position:
+        x: 1650
+        "y": 0
