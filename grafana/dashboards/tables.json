@@ -1,0 +1,107 @@
+{
+  "uid": "faa-tables",
+  "title": "Tables",
+  "description": "Every table and view in the faa schema and how many rows it has.",
+  "tags": [
+    "faa",
+    "tables"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "2025-01-01T00:00:00.000Z",
+    "to": "2026-07-31T23:59:59.000Z"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "catalog",
+        "label": "Catalog",
+        "type": "constant",
+        "hide": 2,
+        "query": "main",
+        "current": {
+          "text": "main",
+          "value": "main"
+        },
+        "options": [
+          {
+            "text": "main",
+            "value": "main",
+            "selected": true
+          }
+        ],
+        "description": "The Unity Catalog catalog holding the faa schema. scripts/grafana-provision.sh sets it from databricks.catalog."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Tables and views in ${catalog}.faa",
+      "description": "Counted when the dashboard loads. The list comes from the catalog's information schema, so new tables appear on their own.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "locale"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Rows",
+            "desc": true
+          }
+        ]
+      },
+      "datasource": {
+        "type": "mullerpeter-databricks-datasource",
+        "uid": "databricks-faa"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mullerpeter-databricks-datasource",
+            "uid": "databricks-faa"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "DECLARE OR REPLACE VARIABLE counts STRING;\nSET VAR counts = (\n  SELECT concat_ws(\" UNION ALL \", array_sort(collect_list(concat(\n           \"SELECT '\", table_name, \"' AS `Table`, '\", if(table_type = \"VIEW\", \"view\", \"table\"),\n           \"' AS `Type`, count(*) AS `Rows` FROM `${catalog}`.faa.`\", table_name, \"`\"))))\n  FROM ${catalog}.information_schema.tables WHERE table_schema = \"faa\");\nEXECUTE IMMEDIATE counts"
+        }
+      ]
+    }
+  ]
+}

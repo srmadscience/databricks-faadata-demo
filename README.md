@@ -266,6 +266,7 @@ Dashboards (folder "FAA"):
 | Weather Impact (`/d/faa-weather-impact`) | Delays, cancellations and diversions by weather at origin and destination: flight category, present weather, wind, visibility, temperature; worst weather days |
 | Airport Weather (`/d/faa-airport-weather`) | Pick an airport on a map coloured by flight category, then see its observed weather (METARs) over time: flight category, the four cloud layers' cover and height, visibility, present weather, wind, temperature and dew point, precipitation and pressure, and the raw reports |
 | Aircraft Reliability (`/d/faa-aircraft-reliability`) | Per tail number: carrier-caused cancellations and delays, utilisation, out-of-service gaps, reliability by model and age, top 10 least reliable aircraft; drill into one aircraft: its registration, daily activity, disrupted flights and full flight history |
+| Tables (`/d/faa-tables`) | Every table and view in the `faa` schema with its row count |
 
 The top-10 charts rank by carrier cancellations (cancellation code A) per 1,000 flights,
 so weather and air-traffic cancellations don't count against an airline, and only consider
